@@ -1,0 +1,82 @@
+// 1. Query 1 
+
+MATCH (origin:Airport)<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(destination:Airport)
+WITH origin.station_code AS origin, 
+     destination.station_code AS destination, 
+     count(f) AS flight_count
+ORDER BY flight_count DESC
+LIMIT 5
+
+RETURN origin, destination, flight_count
+
+
+// if JSON to be returned 
+// RETURN collect({
+//   origin: origin, 
+//  destination: destination, 
+//   flight_count: flight_count
+// }) 
+
+// 2. Query 2
+
+MATCH (j:Journey)-[:ON]->(f:Flight)
+WITH f.flight_number AS flight_id, count(j) AS feedback_count
+ORDER BY feedback_count DESC
+LIMIT 10
+RETURN flight_id, feedback_count 
+
+// if JSON to be returned 
+// RETURN collect({
+//   flight_id: flight_id,
+//   feedback_count: feedback_count
+// })
+
+
+
+// 3. Query 3 
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+WHERE j.number_of_legs > 1
+WITH p.generation AS generation, 
+     count(j) AS multi_leg_count, 
+     avg(j.food_satisfaction_score) AS avg_score
+ORDER BY multi_leg_count DESC
+RETURN generation, multi_leg_count, avg_score
+
+// if JSON to be returned 
+
+// RETURN collect({
+//   generation: generation, 
+//   multi_leg_count: multi_leg_count, 
+//   avg_score: avg_score
+// })
+
+
+// 4. Query 4
+MATCH (j:Journey)-[:ON]->(f:Flight)
+WITH avg(j.arrival_delay_minutes) AS avg_arrival_delay, f.flight_number AS flight_id 
+ORDER BY avg_arrival_delay ASC
+LIMIT 10 
+RETURN flight_id, avg_arrival_delay
+
+// if JSON to be returned 
+
+// RETURN collect({
+//   flight_id: flight_id, 
+//   avg_arrival_delay: avg_arrival_delay
+// })
+
+
+// 5. Query 
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+WITH p.loyalty_program_level AS loyalty_level, 
+     avg(j.actual_flown_miles) AS avg_actual_flown_miles
+ORDER BY avg_actual_flown_miles DESC
+RETURN loyalty_level, avg_actual_flown_miles
+
+// if JSON to be returned 
+// RETURN collect({
+//   loyalty_level: loyalty_level, 
+//   avg_actual_flown_miles: avg_actual_flown_miles
+// }) 
