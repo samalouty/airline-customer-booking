@@ -1,3 +1,3 @@
-URI=neo4j+s://7024aa62.databases.neo4j.io
+URI=neo4j+s://517421d9.databases.neo4j.io
 USERNAME=neo4j
-PASSWORD=c-Bf6Rl202lvY3Gc-YSH3BP4PyV6xN-9afyuz8JTwPc
+PASSWORD=DYbr_ety0tcR13F2Tf32lQKysun6m1j1d7GCh0cKMyM
