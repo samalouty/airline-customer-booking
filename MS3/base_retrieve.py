@@ -4,6 +4,7 @@ import os
 import sys
 
 # --- Configuration ---
+# Ensure this matches your actual project structure
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.neo4j_client import driver as default_driver
 
@@ -20,165 +21,143 @@ class Neo4jRetriever:
             "lookup_details"
         ]
 
+    # ==========================================
+    # HELPER: Data Cleaning & Normalization
+    # ==========================================
+    def normalize_entities(self, entities):
+        """
+        Cleans LLM outputs to match Database constraints.
+        1. Maps 'Boomers' -> 'Boomer' (De-pluralization)
+        2. Maps synonyms (vip_id -> record_locator)
+        """
+        clean = entities.copy()
+
+        # --- Fix 1: Handle Plurals for Generations ---
+        if 'generation' in clean:
+            gen = clean['generation'].lower()
+            if 'boomer' in gen: clean['generation'] = 'Boomer'
+            elif 'millennial' in gen: clean['generation'] = 'Millennial'
+            elif 'gen x' in gen: clean['generation'] = 'Gen X'
+            elif 'gen z' in gen: clean['generation'] = 'Gen Z'
+        
+        # --- Fix 2: Key Mapping ---
+        # Map whatever the LLM gave to standard variable names for Cypher
+        if 'origin_code' in clean: clean['origin'] = clean.pop('origin_code')
+        if 'dest_code' in clean: clean['dest'] = clean.pop('dest_code')
+        if 'vip_id' in clean: clean['record_locator'] = clean.pop('vip_id')
+        if 'loyalty_level' in clean: clean['loyalty_tier'] = clean.pop('loyalty_level')
+        if 'passenger_class' in clean: clean['class'] = clean.pop('passenger_class')
+
+        return clean
+
+    # ==========================================
+    # LOGIC: The Internal Router
+    # ==========================================
     def get_query_for_intent(self, intent, entities):
         """
-        Maps a Broad Intent + Available Entities -> Specific Cypher Query.
-        Includes parameter normalization to handle LLM variations.
+        Maps Intent + Entities -> Specific Cypher Query
         """
         
-        # Helper to check keys safely
-        has_origin = 'origin' in entities or 'origin_code' in entities
-        has_dest = 'dest' in entities or 'dest_code' in entities or 'destination' in entities
-        
-        # Normalize keys for Cypher (Map whatever the LLM gave to standard variable names)
-        # This ensures if LLM gives 'origin', we can use $origin in Cypher
-        if 'origin_code' in entities: entities['origin'] = entities.pop('origin_code')
-        if 'dest_code' in entities: entities['dest'] = entities.pop('dest_code')
-        if 'vip_id' in entities: entities['record_locator'] = entities.pop('vip_id')
-        if 'loyalty_level' in entities: entities['loyalty_tier'] = entities.pop('loyalty_level')
-        if 'passenger_class' in entities: entities['class'] = entities.pop('passenger_class')
-
-        # ------------------------------------------
         # 1. INTENT: search_network
-        # ------------------------------------------
         if intent == "search_network":
-            # CASE: Specific Long Haul Route (Origin + Dest + Min Miles)
-            # Fixes: "Find all flights from JNX to EWX longer than 2000 miles"
             if 'origin' in entities and 'dest' in entities and 'min_miles' in entities:
                 return """
                     MATCH (origin:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(dest:Airport {station_code: $dest})
                     MATCH (j:Journey)-[:ON]->(f)
                     WHERE j.actual_flown_miles > $min_miles
-                    RETURN DISTINCT f.flight_number, 
-                                    f.fleet_type_description, 
-                                    j.actual_flown_miles
+                    RETURN DISTINCT f.flight_number, f.fleet_type_description, j.actual_flown_miles
                 """
-
-            # CASE: Standard Route Lookup (Origin + Dest)
             if 'origin' in entities and 'dest' in entities:
                 return """
                     MATCH (o:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
                     RETURN f.flight_number, f.fleet_type_description
                 """
-
-            # CASE: Frequency from Origin
             if 'origin' in entities:
                 return """
                     MATCH (o:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport)
-                    RETURN o.station_code AS origin, 
-                           d.station_code AS destination, 
-                           count(f) AS flight_options_count
-                    ORDER BY flight_options_count DESC
-                    LIMIT 10
+                    RETURN o.station_code AS origin, d.station_code AS destination, count(f) AS flight_options_count
+                    ORDER BY flight_options_count DESC LIMIT 10
                 """
 
-        # ------------------------------------------
         # 2. INTENT: analyze_satisfaction
-        # ------------------------------------------
         if intent == "analyze_satisfaction":
-            # CASE: Loyalty Tier + Cabin Class
-            # Fixes: "Average satisfaction for Premier Gold members in Economy?"
             if 'loyalty_tier' in entities and 'class' in entities:
                 return """
                     MATCH (p:Passenger)-[:TOOK]->(j:Journey)
-                    WHERE p.loyalty_program_level = $loyalty_tier 
-                      AND j.passenger_class = $class
-                    RETURN avg(j.food_satisfaction_score) AS average_rating, 
-                           count(j) AS total_trips
+                    WHERE p.loyalty_program_level = $loyalty_tier AND j.passenger_class = $class
+                    RETURN avg(j.food_satisfaction_score) AS average_rating, count(j) AS total_trips
                 """
-
-            # CASE: Generation + Fleet Type
-            # Fixes: "Gen X passengers on A320-200" (Moved from analyze_issues to here for robustness)
             if 'generation' in entities and 'fleet_type' in entities:
                 return """
                     MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
-                    WHERE p.generation = $generation 
-                      AND f.fleet_type_description = $fleet_type
-                    RETURN p.generation, f.fleet_type_description,
-                           avg(j.food_satisfaction_score) AS average_food_rating
+                    WHERE p.generation = $generation AND f.fleet_type_description = $fleet_type
+                    RETURN p.generation, f.fleet_type_description, avg(j.food_satisfaction_score) AS average_food_rating
                 """
-
-            # CASE: Generation Only
             if 'generation' in entities:
                 return """
                     MATCH (p:Passenger)-[:TOOK]->(j:Journey)
                     WHERE p.generation = $generation
-                    RETURN p.generation AS generation, 
-                           avg(j.food_satisfaction_score) AS average_food_rating
+                    RETURN p.generation AS generation, avg(j.food_satisfaction_score) AS average_food_rating
                 """
-            
-            # Default Global Average
             return "MATCH (j:Journey) RETURN avg(j.food_satisfaction_score) as global_avg"
 
-        # ------------------------------------------
         # 3. INTENT: analyze_delays
-        # ------------------------------------------
         if intent == "analyze_delays":
-            # CASE: Specific Airport
-            # Fixes: "Show me the delay statistics for flights out of JNX."
             if 'origin' in entities:
                 return """
                     MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(a:Airport {station_code: $origin})
-                    RETURN a.station_code AS airport, 
-                           min(j.arrival_delay_minutes) AS min_delay, 
-                           max(j.arrival_delay_minutes) AS max_delay, 
-                           avg(j.arrival_delay_minutes) AS avg_delay
+                    RETURN a.station_code AS airport, min(j.arrival_delay_minutes) AS min_delay, max(j.arrival_delay_minutes) AS max_delay, avg(j.arrival_delay_minutes) AS avg_delay
                 """
-            
-            # Default: Fleet Ranking
             return """
                 MATCH (j:Journey)-[:ON]->(f:Flight)
-                RETURN f.fleet_type_description AS aircraft_type, 
-                       avg(j.arrival_delay_minutes) AS average_delay
-                ORDER BY average_delay DESC
-                LIMIT 5
+                RETURN f.fleet_type_description AS aircraft_type, avg(j.arrival_delay_minutes) AS average_delay
+                ORDER BY average_delay DESC LIMIT 5
             """
 
-        # ------------------------------------------
-        # 4. INTENT: analyze_issues (Complex Filters)
-        # ------------------------------------------
+        # 4. INTENT: analyze_issues
         if intent == "analyze_issues":
-            # CASE: Severe Delays + Poor Ratings
             if 'min_delay' in entities and 'max_score' in entities:
                 return """
                     MATCH (j:Journey)-[:ON]->(f:Flight)
-                    WHERE j.arrival_delay_minutes > $min_delay 
-                      AND j.food_satisfaction_score <= $max_score
-                    RETURN f.flight_number, 
-                           j.arrival_delay_minutes, 
-                           j.food_satisfaction_score, 
-                           j.feedback_ID
+                    WHERE j.arrival_delay_minutes > $min_delay AND j.food_satisfaction_score <= $max_score
+                    RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.feedback_ID
                     LIMIT 20
                 """
 
-        # ------------------------------------------
         # 5. INTENT: lookup_details
-        # ------------------------------------------
         if intent == "lookup_details":
-            # CASE: Record Locator (handles 'vip_id' via normalization at top)
-            # Fixes: "Pull up record for locator EPXXW8"
             if 'record_locator' in entities:
+                # CHANGED: We now return a single map called 'full_record' 
+                # instead of 3 separate nodes (p, j, f).
                 return """
                     MATCH (p:Passenger {record_locator: $record_locator})-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
-                    RETURN p, j, f
+                    RETURN {
+                        passenger: properties(p),
+                        journey: properties(j),
+                        flight: properties(f)
+                    } AS full_record
                 """
-
+            
             if 'feedback_id' in entities:
+                # OPTIONAL: You can treat this one the same way for consistency
                 return """
                     MATCH (j:Journey {feedback_ID: $feedback_id})
                     OPTIONAL MATCH (p:Passenger)-[:TOOK]->(j)-[:ON]->(f:Flight)
-                    RETURN properties(j) AS journey_details, 
-                           properties(p) AS passenger_details, 
-                           f.flight_number
+                    RETURN {
+                        journey: properties(j),
+                        passenger: properties(p),
+                        flight_number: f.flight_number
+                    } AS feedback_details
                 """
 
         return None
 
     def run_query(self, intent, entities):
-        # Clean entities (remove Nones)
-        clean_params = {k: v for k, v in entities.items() if v is not None}
+        # 1. Normalize Entities (Fixes 'Boomers' -> 'Boomer')
+        clean_params = self.normalize_entities(entities)
+        clean_params = {k: v for k, v in clean_params.items() if v is not None}
         
-        # Get query with Normalized parameters
+        # 2. Get Query
         cypher_query = self.get_query_for_intent(intent, clean_params)
         
         if not cypher_query:
@@ -189,9 +168,8 @@ class Neo4jRetriever:
                 return "Database Error: Driver not initialized."
             
             # Debug Print
-            print(f"\n--- Executing Query ---")
-            print(f"Intent: {intent}")
-            print(f"Parameters: {clean_params}")
+            print(f"--- Executing Query for '{intent}' ---")
+            print(f"Params: {clean_params}")
             print(f"Cypher Query:\n{cypher_query}")
             print(f"--- End Query ---\n")
             
@@ -200,7 +178,22 @@ class Neo4jRetriever:
                 clean_params,
                 database_="neo4j", 
             )
-            return [dict(record) for record in records]
+            
+            # --- Fix 2: Result Serialization ---
+            # Converts Neo4j Node objects (<Node...>) into clean Python Dictionaries
+            serialized_results = []
+            for record in records:
+                row = {}
+                for key, value in record.items():
+                    # Check if value is a Neo4j Node/Relationship (has 'items' method like a dict)
+                    # or explicitly check type if needed, but 'hasattr' is duck-typing safe
+                    if hasattr(value, 'items') and callable(value.items):
+                        row[key] = dict(value.items()) # Convert Node to Dict
+                    else:
+                        row[key] = value
+                serialized_results.append(row)
+
+            return serialized_results
 
         except Exception as e:
             return f"Database Error: {e}"
@@ -209,17 +202,10 @@ class Neo4jRetriever:
 if __name__ == "__main__":
     retriever = Neo4jRetriever()
     
-    print("\n--- TEST 1: Long Haul Route (Case 1 Fix) ---")
-    print(retriever.run_query("search_network", {'origin': 'JNX', 'dest': 'EWX', 'min_miles': 2000}))
+    print("\n--- TEST 1: Boomers Plural Fix ---")
+    # Input 'Boomers' -> Should convert to 'Boomer' and find results
+    print(retriever.run_query("analyze_satisfaction", {'generation': 'Boomers'}))
 
-    print("\n--- TEST 2: Loyalty + Class (Case 2 Fix) ---")
-    print(retriever.run_query("analyze_satisfaction", {'loyalty_level': 'Premier Gold', 'passenger_class': 'Economy'}))
-
-    print("\n--- TEST 3: Gen X + Fleet (Case 3 Fix) ---")
-    print(retriever.run_query("analyze_satisfaction", {'generation': 'Gen X', 'fleet_type': 'A320-200'}))
-
-    print("\n--- TEST 4: Record Locator (Case 4 Fix) ---")
+    print("\n--- TEST 2: Record Lookup Clean Output Fix ---")
+    # Should output clean JSON, not <Node ...>
     print(retriever.run_query("lookup_details", {'vip_id': 'EPXXW8'}))
-    
-    print("\n--- TEST 5: JNX Delays (Case 5 Fix) ---")
-    print(retriever.run_query("analyze_delays", {'origin': 'JNX'}))
