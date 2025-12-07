@@ -1,0 +1,95 @@
+Q1. Which aircraft types have the highest average delay?
+
+MATCH (j:Journey)-[:ON]->(f:Flight)
+RETURN f.fleet_type_description AS aircraft_type, 
+       avg(j.arrival_delay_minutes) AS average_delay
+ORDER BY average_delay DESC
+LIMIT 5
+
+
+Q2.Show me the delay statistics for flights out of JNX.
+
+
+MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(a:Airport {station_code: $origin_code})
+RETURN a.station_code AS airport, 
+       min(j.arrival_delay_minutes) AS min_delay, 
+       max(j.arrival_delay_minutes) AS max_delay, 
+       avg(j.arrival_delay_minutes) AS avg_delay
+
+Q3. How do Boomers rate the food service?
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+WHERE p.generation = $generation
+RETURN p.generation AS generation, 
+       avg(j.food_satisfaction_score) AS average_food_rating
+
+Q4.What is the average satisfaction score for Premier Gold members in Economy?
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+WHERE p.loyalty_program_level = $loyalty_tier 
+  AND j.passenger_class = $class
+RETURN avg(j.food_satisfaction_score) AS average_rating, 
+       count(j) AS total_trips
+
+Q5. Find all flights from JNX to EWX longer than 2000 miles.
+
+MATCH (origin:Airport {station_code: $origin_code})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(dest:Airport {station_code: $dest_code})
+MATCH (j:Journey)-[:ON]->(f)
+WHERE j.actual_flown_miles > $min_miles
+RETURN DISTINCT f.flight_number, 
+                f.fleet_type_description, 
+                j.actual_flown_miles
+
+Q6. Which routes from JNX have the most frequent flights?
+MATCH (o:Airport {station_code: $origin_code})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport)
+RETURN o.station_code AS origin, 
+       d.station_code AS destination, 
+       count(f) AS flight_options_count
+ORDER BY flight_options_count DESC
+LIMIT 10
+
+Q7. Show me flights with severe delays (> 6 min) and poor food ratings (< 3).
+
+MATCH (j:Journey)-[:ON]->(f:Flight)
+WHERE j.arrival_delay_minutes > $min_delay 
+  AND j.food_satisfaction_score <= $max_score
+RETURN f.flight_number, 
+       j.arrival_delay_minutes, 
+       j.food_satisfaction_score, 
+       j.feedback_ID
+LIMIT 20
+
+
+Q8. List experiences of Gen X passengers flying on the A320-200.
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+WHERE p.generation = $generation 
+  AND f.fleet_type_description = $fleet
+RETURN j.food_satisfaction_score, 
+       j.arrival_delay_minutes, 
+       p.loyalty_program_level
+LIMIT 50
+
+
+Q9. Pull up the record for locator EPXXW8.
+MATCH (p:Passenger {record_locator: $record_locator})-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+RETURN p, j, f
+Q10. Get details for Feedback ID F_18.
+
+MATCH (j:Journey {feedback_ID: $feedback_id})
+OPTIONAL MATCH (p:Passenger)-[:TOOK]->(j)-[:ON]->(f:Flight)
+RETURN properties(j) AS journey_details, 
+       properties(p) AS passenger_details, 
+       f.flight_number
+
+Q10. Flights out of SEX
+
+MATCH (o:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport)
+RETURN o.station_code AS origin, d.station_code AS destination, count(f) AS flight_options_count
+ORDER BY flight_options_count DESC LIMIT 10
+
+
+Q11. Flights from SEX to IAX
+
+ MATCH (o:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
+ RETURN f.flight_number, f.fleet_type_description
+
