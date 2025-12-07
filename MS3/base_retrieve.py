@@ -88,9 +88,11 @@ class Neo4jRetriever:
                     RETURN avg(j.food_satisfaction_score) AS average_rating, count(j) AS total_trips
                 """
             if 'generation' in entities and 'fleet_type' in entities:
+                # FIX: Changed '=' to 'CONTAINS' for fleet_type_description
                 return """
                     MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
-                    WHERE p.generation = $generation AND f.fleet_type_description = $fleet_type
+                    WHERE p.generation = $generation 
+                      AND f.fleet_type_description CONTAINS $fleet_type
                     RETURN p.generation, f.fleet_type_description, avg(j.food_satisfaction_score) AS average_food_rating
                 """
             if 'generation' in entities:
