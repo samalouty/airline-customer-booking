@@ -2,170 +2,201 @@
 import os
 import sys
 import json
+import re
+import spacy
+from spacy.pipeline import EntityRuler
 
-# Add the project root to the python path so we can import config
+# Add the project root to the python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from config.openai_client import get_answer
-from config.neo4j_client import driver
+from config.neo4j_client import driver as default_driver # Adjusted import to match your structure
 from MS3.base_retrieve import Neo4jRetriever
 
 class QueryPreprocessor:
     """
-    Handles preprocessing of user queries, including intent classification and entity extraction.
+    Handles preprocessing using Hybrid NER (spaCy + Rules) instead of pure LLMs for extraction.
     """
     
-    # Schema context from Create_kg.py (simplified for the prompt)
-    SCHEMA_CONTEXT = """
-    Nodes and Properties:
-    - Passenger: record_locator, loyalty_program_level, generation
-    - Journey: feedback_ID, food_satisfaction_score, arrival_delay_minutes, actual_flown_miles, number_of_legs, passenger_class
-    - Flight: flight_number, fleet_type_description
-    - Airport: station_code (origin_code, dest_code)
-    
-    Relationships:
-    - (Passenger)-[:TOOK]->(Journey)
-    - (Journey)-[:ON]->(Flight)
-    - (Flight)-[:DEPARTS_FROM]->(Airport)
-    - (Flight)-[:ARRIVES_AT]->(Airport)
-    """
-
     def __init__(self, retriever):
-        """
-        Initialize the preprocessor with a retriever instance to access available intents.
-        """
         self.retriever = retriever
+        
+        # --- 1. Load spaCy Model ---
+        print("Loading NER models...")
+        self.nlp = spacy.load("en_core_web_sm")
+        
+        # --- 2. Add Custom Entity Ruler ---
+        # This allows us to define specific airline patterns that the base model doesn't know.
+        # We add it *before* the 'ner' component so our rules take precedence.
+        if "entity_ruler" not in self.nlp.pipe_names:
+            ruler = self.nlp.add_pipe("entity_ruler", before="ner")
+            
+            patterns = [
+                # -- Loyalty Tiers --
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "premier"}, {"LOWER": "gold"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "premier"}, {"LOWER": "silver"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "premier"}, {"LOWER": "platinum"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "premier"}, {"LOWER": "1k"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "non-elite"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "non"}, {"LOWER": "elite"}]},
+
+                # -- Generations --
+                {"label": "GENERATION", "pattern": [{"LOWER": "boomer"}]},
+                {"label": "GENERATION", "pattern": [{"LOWER": "boomers"}]}, # Plural handling
+                {"label": "GENERATION", "pattern": [{"LOWER": "millennial"}]},
+                {"label": "GENERATION", "pattern": [{"LOWER": "millennials"}]},
+                {"label": "GENERATION", "pattern": [{"LOWER": "gen"}, {"LOWER": "x"}]},
+                {"label": "GENERATION", "pattern": [{"LOWER": "gen"}, {"LOWER": "z"}]},
+
+                # -- Cabin Class --
+                {"label": "CLASS", "pattern": [{"LOWER": "economy"}]},
+                {"label": "CLASS", "pattern": [{"LOWER": "business"}]},
+                {"label": "CLASS", "pattern": [{"LOWER": "first"}, {"LOWER": "class"}]},
+
+                # -- Fleet/Aircraft --
+                # Matches patterns like "B777", "A320", "Boeing 777"
+                {"label": "FLEET", "pattern": [
+                    {"TEXT": {"REGEX": "^[BA][0-9]{3}$"}}, 
+                    {"TEXT": "-"}, 
+                    {"TEXT": {"REGEX": "^[0-9]+$"}}
+                ]},
+                {"label": "FLEET", "pattern": [{"TEXT": {"REGEX": "^[BA][0-9]{3}(-[0-9]+)?$"}}]}, 
+                {"label": "FLEET", "pattern": [{"LOWER": "boeing"}, {"TEXT": {"REGEX": "^7[0-9]{2}$"}}]},
+                {"label": "FLEET", "pattern": [{"LOWER": "airbus"}, {"TEXT": {"REGEX": "^3[0-9]{2}$"}}]},
+
+                # -- Airport Codes (Simple 3-Letter Uppercase) --
+                # Note: This is aggressive regex. In production, validate against a DB list.
+                {"label": "AIRPORT", "pattern": [{"TEXT": {"REGEX": "^[A-Z]{3}$"}}]},
+                
+                # -- Record Locators (6 char alphanumeric) --
+                {"label": "LOCATOR", "pattern": [{"TEXT": {"REGEX": "^[A-Z0-9]{6}$"}}]}
+            ]
+            ruler.add_patterns(patterns)
+
 
     def classify_intent(self, user_input):
         """
-        Uses LLM to classify the user's input into one of the available intents.
+        Uses LLM to classify intent. (Kept as is, since Intent classification is hard for Regex)
         """
         available_intents = self.retriever.get_available_intents()
         
         prompt = f"""
-        You are an intent classifier for an airline customer booking system.
-        
+        You are an intent classifier for an airline system.
         User Input: "{user_input}"
-        
-        Available Intents:
-        {json.dumps(available_intents, indent=2)}
-        
-        Task:
-        Analyze the user input and map it to exactly one of the available intents.
-        Return ONLY the intent key. If the input does not match any intent, return "unknown".
+        Available Intents: {json.dumps(available_intents)}
+        Return ONLY the intent key. Default to "unknown".
         """
-        
-        intent = get_answer(prompt).strip()
-        
-        # Basic cleanup in case the LLM adds quotes or extra whitespace
-        intent = intent.replace('"', '').replace("'", "").strip()
-        
-        if intent not in available_intents:
-            return "unknown"
-            
-        return intent
+        intent = get_answer(prompt).strip().replace('"', '').replace("'", "")
+        return intent if intent in available_intents else "unknown"
+
 
     def extract_entities(self, user_input, intent):
         """
-        Uses LLM to extract entities based on the user input and the identified intent.
+        REPLACED LLM with spaCy NER Pipeline.
         """
+        doc = self.nlp(user_input)
+        entities = {}
+
+        # --- 1. Basic Entity Extraction from Ruler ---
+        for ent in doc.ents:
+            # Clean up the text (e.g., "Boomers" -> "Boomer")
+            val = ent.text
+            
+            if ent.label_ == "GENERATION":
+                # Basic normalization
+                if "boomer" in val.lower(): val = "Boomer"
+                elif "millennial" in val.lower(): val = "Millennial"
+                entities["generation"] = val
+            
+            elif ent.label_ == "LOYALTY_TIER":
+                entities["loyalty_tier"] = val.lower() # DB likely stores lowercase or specific format
+            
+            elif ent.label_ == "CLASS":
+                entities["class"] = val.title() # e.g., "Economy"
+            
+            elif ent.label_ == "FLEET":
+                entities["fleet_type"] = val.upper()
+            
+            elif ent.label_ == "LOCATOR":
+                entities["record_locator"] = val
+            
+            elif ent.label_ == "AIRPORT":
+                # Logic to distinguish Origin vs Dest based on prepositions
+                # Look at the word immediately 'before' the airport code
+                token_index = ent.start
+                if token_index > 0:
+                    prev_word = doc[token_index - 1].text.lower()
+                    if prev_word in ["from", "departing", "out"]:
+                        entities["origin"] = val
+                    elif prev_word in ["to", "arriving", "into"]:
+                        entities["dest"] = val
+                    else:
+                        # Fallback: If we have an origin, this must be dest, else origin
+                        if "origin" not in entities:
+                            entities["origin"] = val
+                        else:
+                            entities["dest"] = val
+                else:
+                    # First word is airport? Assume origin usually
+                    entities["origin"] = val
+
+        # --- 2. Numerical extraction (Min/Max Logic) ---
+        # This is harder for simple NER, so we use Regex + Dependency logic
+        # Example: "longer than 2000 miles" or "delays over 60 min"
         
-        prompt = f"""
-        You are an entity extractor for an airline database query system.
-        
-        Schema Context:
-        {self.SCHEMA_CONTEXT}
-        
-        User Input: "{user_input}"
-        Identified Intent: "{intent}"
-        
-        Task:
-        Extract the necessary parameters (entities) from the user input to execute the Cypher query for the given intent.
-        Return the result as a valid JSON object where keys are the parameter names expected by the Cypher query.
-        
-        Standard Parameter Names (use these keys if applicable):
-        - min_delay, max_delay (for arrival_delay_minutes)
-        - min_score, max_score (for food_satisfaction_score)
-        - min_miles, max_miles (for actual_flown_miles)
-        - loyalty_level, loyalty_levels (for loyalty_program_level)
-        - generation, generations
-        - passenger_class
-        - fleet_type (for fleet_type_description)
-        - station_code, origin, dest
-        - vip_id (for record_locator)
-        
-        If a parameter is missing or cannot be inferred, do not include it in the JSON.
-        
-        Example Output:
-        {{
-            "min_delay": 60,
-            "max_score": 2,
-            "loyalty_level": "Platinum"
-        }}
-        """
-        
-        response = get_answer(prompt)
-        
-        try:
-            # Attempt to parse the JSON response
-            # Sometimes LLMs wrap JSON in markdown code blocks
-            if "```json" in response:
-                response = response.split("```json")[1].split("```")[0]
-            elif "```" in response:
-                response = response.split("```")[1].split("```")[0]
-                
-            entities = json.loads(response.strip())
-            return entities
-        except json.JSONDecodeError:
-            print(f"Error parsing entities JSON: {response}")
-            return {}
+        # Regex for Mileage
+        miles_match = re.search(r'(longer|greater|more) than (\d+)', user_input)
+        if miles_match:
+            entities["min_miles"] = int(miles_match.group(2))
+
+        # Regex for Delays
+        delay_match = re.search(r'(delay|late).*?(\d+)', user_input)
+        if delay_match:
+            # Simple assumption: users usually ask for delays GREATER than X
+            entities["min_delay"] = int(delay_match.group(2))
+            
+        # Regex for Satisfaction Scores
+        score_match = re.search(r'(rating|score).*?(\d)', user_input) # Single digit for score
+        if score_match:
+            score = int(score_match.group(2))
+            # Determine if they want 'poor' (<) or 'good' (>)
+            if "poor" in user_input or "bad" in user_input or "less" in user_input or "under" in user_input:
+                entities["max_score"] = score
+            else:
+                entities["min_score"] = score
+
+        return entities
 
     def get_embedding(self, text):
-        """
-        Placeholder for future embedding implementation.
-        """
-        # TODO: Implement embedding generation logic here
         pass
 
 def main():
-    print("--- Airline Customer Booking System Preprocessing ---")
-    print("Please enter your query (or type 'exit' to quit):")
-    
-    # Initialize components
-    # We pass the driver explicitly, though Neo4jRetriever can handle it being None (using default)
-    retriever = Neo4jRetriever(driver)
+    print("--- Airline System (NER Enabled) ---")
+    retriever = Neo4jRetriever(default_driver)
     processor = QueryPreprocessor(retriever)
     
     while True:
         user_input = input("\n> ")
-        if user_input.lower() in ['exit', 'quit']:
-            break
+        if user_input.lower() in ['exit', 'quit']: break
             
-        print("Classifying intent...")
+        print("Classifying intent (LLM)...")
         intent = processor.classify_intent(user_input)
         print(f"Identified Intent: {intent}")
         
         if intent == "unknown":
-            print("Could not understand the intent. Please try again.")
+            print("Unknown intent.")
             continue
             
-        print("Extracting entities...")
+        print("Extracting entities (NER)...")
         entities = processor.extract_entities(user_input, intent)
         print(f"Extracted Entities: {entities}")
-        
-        # Placeholder for embedding
-        processor.get_embedding(user_input)
         
         print("Executing query...")
         results = retriever.run_query(intent, entities)
         
         print("\n--- Query Results ---")
         if isinstance(results, list):
-            if not results:
-                print("No results found.")
-            else:
-                for res in results:
-                    print(res)
+            for res in results: print(res)
         else:
             print(results)
 
