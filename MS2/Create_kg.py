@@ -1,21 +1,14 @@
 import pandas as pd
 from neo4j import GraphDatabase
 import os
+from dotenv import load_dotenv
 
-def load_config(config_file):
-    config = {}
-    with open(config_file, 'r') as f:
-        for line in f:
-            if '=' in line:
-                key, value = line.strip().split('=', 1)
-                config[key] = value
-    return config
+load_dotenv()
 
 def create_kg():
-    config = load_config('config.txt')
-    uri = config.get('URI', 'neo4j://localhost:7687')
-    username = config.get('USERNAME', 'neo4j')
-    password = config.get('PASSWORD', 'password')
+    uri = os.getenv('NEO4J_URI', 'neo4j://localhost:7687')
+    username = os.getenv('NEO4J_USERNAME', 'neo4j')
+    password = os.getenv('NEO4J_PASSWORD', 'password')
 
     driver = GraphDatabase.driver(uri, auth=(username, password))
 
