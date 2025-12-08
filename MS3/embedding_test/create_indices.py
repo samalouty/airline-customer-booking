@@ -1,21 +1,18 @@
 from neo4j import GraphDatabase
+import os
+import sys
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # ------------------------------
 # Neo4j Connection
 # ------------------------------
-def load_config(config_file):
-    config = {}
-    with open(config_file, 'r') as f:
-        for line in f:
-            if '=' in line:
-                key, value = line.strip().split('=', 1)
-                config[key] = value
-    return config
+uri = os.getenv('NEO4J_URI', 'neo4j://localhost:7687')
+username = os.getenv('NEO4J_USERNAME', 'neo4j')
+password = os.getenv('NEO4J_PASSWORD', 'password')
 
-config = load_config('../../config.txt')
-uri = config.get('URI', 'neo4j://localhost:7687')
-username = config.get('USERNAME', 'neo4j')
-password = config.get('PASSWORD', 'password')
 
 driver = GraphDatabase.driver(uri, auth=(username, password))
 
