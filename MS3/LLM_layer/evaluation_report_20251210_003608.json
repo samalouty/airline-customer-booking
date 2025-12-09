@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-12-10T00:36:08.094098",
+  "total_queries": 12,
+  "models": {
+    "gpt-oss-20b": {
+      "avg_response_time": 1.6460176904996235,
+      "avg_word_count": 179.08333333333334,
+      "avg_relevance": 0.7033730158730158,
+      "avg_grounding": 0.0,
+      "avg_clarity": 1.0,
+      "avg_no_hallucination": 0.525,
+      "overall_quality": 0.6190079365079365
+    },
+    "qwen3-32b": {
+      "avg_response_time": 5.029222985108693,
+      "avg_word_count": 432.1666666666667,
+      "avg_relevance": 0.9742063492063492,
+      "avg_grounding": 0.0,
+      "avg_clarity": 0.9833333333333334,
+      "avg_no_hallucination": 0.4749999999999999,
+      "overall_quality": 0.6098412698412697
+    },
+    "llama-3.3-70b": {
+      "avg_response_time": 1.4941512942314148,
+      "avg_word_count": 159.5,
+      "avg_relevance": 0.8283730158730158,
+      "avg_grounding": 0.0,
+      "avg_clarity": 0.9666666666666667,
+      "avg_no_hallucination": 0.5666666666666665,
+      "overall_quality": 0.6590079365079365
+    }
+  }
+}
