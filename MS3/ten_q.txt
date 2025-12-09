@@ -41,6 +41,7 @@ RETURN DISTINCT f.flight_number,
                 j.actual_flown_miles
 
 Q6. Which routes from JNX have the most frequent flights?
+
 MATCH (o:Airport {station_code: $origin_code})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport)
 RETURN o.station_code AS origin, 
        d.station_code AS destination, 
@@ -61,6 +62,7 @@ LIMIT 20
 
 
 Q8. List experiences of Gen X passengers flying on the A320-200.
+
 MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
 WHERE p.generation = $generation 
   AND f.fleet_type_description = $fleet
@@ -71,8 +73,11 @@ LIMIT 50
 
 
 Q9. Pull up the record for locator EPXXW8.
+
 MATCH (p:Passenger {record_locator: $record_locator})-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
 RETURN p, j, f
+
+
 Q10. Get details for Feedback ID F_18.
 
 MATCH (j:Journey {feedback_ID: $feedback_id})
@@ -81,14 +86,14 @@ RETURN properties(j) AS journey_details,
        properties(p) AS passenger_details, 
        f.flight_number
 
-Q10. Flights out of SEX
+Q11. Flights out of SEX
 
 MATCH (o:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport)
 RETURN o.station_code AS origin, d.station_code AS destination, count(f) AS flight_options_count
 ORDER BY flight_options_count DESC LIMIT 10
 
 
-Q11. Flights from SEX to IAX
+Q12. Flights from SEX to IAX
 
  MATCH (o:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
  RETURN f.flight_number, f.fleet_type_description
