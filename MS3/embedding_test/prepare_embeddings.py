@@ -120,8 +120,6 @@ def process(tx):
         tx.run("""
             MATCH (j:Journey {feedback_ID: $fid})
             
-            # Create/Merge the Vector Node
-            # We ID it by the journey ID + suffix to ensure 1:1 mapping
             MERGE (jv:JourneyVector {id: $fid + '_vec'})
             ON CREATE SET 
                 jv.text = $text,
@@ -134,7 +132,6 @@ def process(tx):
                 jv.mpnet_embedding = $e2,
                 jv.bgem3_embedding = $e3
             
-            # Link it
             MERGE (j)-[:HAS_VECTOR]->(jv)
         """, 
         fid=row['feedback_ID'],

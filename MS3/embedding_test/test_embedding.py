@@ -20,7 +20,6 @@ def search(query, top_k=3):
     CALL db.index.vector.queryNodes('minilm_vec_index', $k, $vec)
     YIELD node, score
     
-    # Traverse back from Vector Node to Journey to Passenger
     MATCH (j:Journey)-[:HAS_VECTOR]->(node)
     MATCH (p:Passenger)-[:TOOK]->(j)
     
