@@ -9,10 +9,15 @@ def create_kg():
     uri = os.getenv('NEO4J_URI', 'neo4j://localhost:7687')
     username = os.getenv('NEO4J_USERNAME', 'neo4j')
     password = os.getenv('NEO4J_PASSWORD', 'password')
+    
+    print("Connecting to Neo4j database...")
+    print(f"URI: {uri}")    
+    print(f"Username: {username}")
+    print(f"Password: {password}")
 
     driver = GraphDatabase.driver(uri, auth=(username, password))
 
-    csv_file = 'Airline_surveys_sample.csv'
+    csv_file = '../Airline_surveys_sample.csv'
     df = pd.read_csv(csv_file)
 
     with driver.session() as session:
