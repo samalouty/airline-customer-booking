@@ -120,9 +120,13 @@ def create_graph_visualization(results_data: Dict) -> go.Figure:
     G = nx.Graph()
     
     # Extract nodes and edges from results
-    baseline_results = results_data.get('baseline_results', {}).get('results', [])
+    baseline_results = results_data.get('baseline_results', {}).get('results', []) or []
+    embedding_results = results_data.get('embedding_results', {}).get('results', []) or []
     
-    if not baseline_results or not isinstance(baseline_results, list):
+    # Combine for visualization
+    all_results = baseline_results + embedding_results
+    
+    if not all_results:
         return None
     
     # Build graph
@@ -130,7 +134,7 @@ def create_graph_visualization(results_data: Dict) -> go.Figure:
     node_labels = []
     node_sizes = []
     
-    for i, result in enumerate(baseline_results[:15]):  # Limit nodes
+    for i, result in enumerate(all_results[:15]):  # Limit nodes
         if 'flight_number' in result:
             flight_id = f"F_{result['flight_number']}"
             if flight_id not in G:
@@ -212,8 +216,14 @@ def create_graph_visualization(results_data: Dict) -> go.Figure:
                    ))
     return fig
 
-def display_cypher_query(intent: str, entities: Dict):
+def display_cypher_query(intent: str, entities: Dict, executed_query: str = None):
     """Display the actual Cypher query that was executed"""
+    if executed_query:
+        st.code(executed_query, language='cypher')
+        st.caption("Query Parameters")
+        st.json(entities)
+        return
+
     retriever = Neo4jRetriever()
     query = retriever.get_query_for_intent(intent, entities)
     
@@ -394,8 +404,13 @@ for message in st.session_state.chat_history:
 
             with tab4:
                 # Queries
-                if intent and intent != 'unknown':
-                    display_cypher_query(intent, entities)
+                baseline = result.get('baseline_results', {})
+                intent = baseline.get('intent')
+                entities = baseline.get('entities', {})
+                executed_query = baseline.get('generated_cypher')
+
+                if executed_query or (intent and intent != 'unknown'):
+                    display_cypher_query(intent, entities, executed_query)
 
 # Chat Input
 if prompt := st.chat_input("Ask a question about flights, delays, or passengers..."):
@@ -487,8 +502,11 @@ if prompt := st.chat_input("Ask a question about flights, delays, or passengers.
                         st.write("No graph data to visualize.")
 
                 with tab4:
-                    if intent and intent != "unknown":
-                        display_cypher_query(intent, result['baseline_results'].get('entities', {}))
+                    baseline_res = result['baseline_results']
+                    executed_query = baseline_res.get('generated_cypher')
+                    
+                    if executed_query or (intent and intent != "unknown"):
+                        display_cypher_query(intent, baseline_res.get('entities', {}), executed_query)
                     else:
                         st.write("No Cypher query generated.")
 

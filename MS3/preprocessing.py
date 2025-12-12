@@ -192,7 +192,7 @@ def main():
         print(f"Extracted Entities: {entities}")
         
         print("Executing query...")
-        results = retriever.run_query(intent, entities)
+        results, query = retriever.run_query(intent, entities)
         
         print("\n--- Query Results ---")
         if isinstance(results, list):

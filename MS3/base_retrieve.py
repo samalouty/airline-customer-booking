@@ -163,11 +163,11 @@ class Neo4jRetriever:
         cypher_query = self.get_query_for_intent(intent, clean_params)
         
         if not cypher_query:
-            return f"Error: Could not construct query for intent '{intent}' with entities {list(clean_params.keys())}"
+            return f"Error: Could not construct query for intent '{intent}' with entities {list(clean_params.keys())}", None
 
         try:
             if self.driver is None:
-                return "Database Error: Driver not initialized."
+                return "Database Error: Driver not initialized.", None
             
             # Debug Print
             print(f"--- Executing Query for '{intent}' ---")
@@ -195,10 +195,10 @@ class Neo4jRetriever:
                         row[key] = value
                 serialized_results.append(row)
 
-            return serialized_results
+            return serialized_results, cypher_query
 
         except Exception as e:
-            return f"Database Error: {e}"
+            return f"Database Error: {e}", None
 
 # --- Usage Example ---
 if __name__ == "__main__":
@@ -206,8 +206,10 @@ if __name__ == "__main__":
     
     print("\n--- TEST 1: Boomers Plural Fix ---")
     # Input 'Boomers' -> Should convert to 'Boomer' and find results
-    print(retriever.run_query("analyze_satisfaction", {'generation': 'Boomers'}))
+    results, query = retriever.run_query("analyze_satisfaction", {'generation': 'Boomers'})
+    print(results)
 
     print("\n--- TEST 2: Record Lookup Clean Output Fix ---")
     # Should output clean JSON, not <Node ...>
-    print(retriever.run_query("lookup_details", {'vip_id': 'EPXXW8'}))
+    results, query = retriever.run_query("lookup_details", {'vip_id': 'EPXXW8'})
+    print(results)

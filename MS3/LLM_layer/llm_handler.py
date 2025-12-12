@@ -73,14 +73,15 @@ class LLMHandler:
         entities = self.preprocessor.extract_entities(user_query, intent)
 
         # Run query
-        results = self.retriever.run_query(intent, entities)
+        results, cypher_query = self.retriever.run_query(intent, entities)
 
         return {
             "method": "baseline_cypher",
             "intent": intent,
             "entities": entities,
             "results": results,
-            "query": user_query
+            "query": user_query,
+            "generated_cypher": cypher_query
         }
 
     def get_embedding_results(self, user_query: str, top_k: int = 5) -> Dict[str, Any]:
