@@ -84,21 +84,40 @@ EMBEDDING_MODELS = {
 # LLM MODELS CONFIGURATION
 # ==========================================
 LLM_MODELS = {
+    # Recommended Models
     "llama-3.1-8b-instant": {
         "name": "Llama 3.1 8B (Fast)",
-        "description": "Fast inference, good for quick responses"
+        "description": "Fast, reliable, low cost"
     },
-    "llama-3.1-70b-versatile": {
-        "name": "Llama 3.1 70B (Powerful)",
-        "description": "Higher quality answers, slower inference"
+    "llama-3.3-70b-versatile": {
+        "name": "Llama 3.3 70B (Versatile)",
+        "description": "High quality, versatile"
     },
-    "mixtral-8x7b-32768": {
-        "name": "Mixtral 8x7B",
-        "description": "Mixture of Experts, balanced performance"
+    
+    # Llama 4 Series
+    "meta-llama/llama-4-scout-17b-16e-instruct": {
+        "name": "Llama 4 Scout",
+        "description": "Vision capable, 10M context"
     },
-    "gemma2-9b-it": {
-        "name": "Gemma 2 9B",
-        "description": "Google's model, good reasoning"
+    "meta-llama/llama-4-maverick-17b-128e-instruct": {
+        "name": "Llama 4 Maverick",
+        "description": "Advanced Vision capabilities"
+    },
+    
+    # Reasoning Models
+    "qwen/qwen3-32b": {
+        "name": "Qwen 3 32B",
+        "description": "Strong performance, emerging model"
+    },
+
+    # GPT OSS Models
+    "openai/gpt-oss-20b": {
+        "name": "GPT OSS 20B",
+        "description": "Balanced open-source model"
+    },
+    "openai/gpt-oss-120b": {
+        "name": "GPT OSS 120B",
+        "description": "Large scale open-source model"
     }
 }
 
@@ -121,7 +140,12 @@ def create_graph_visualization(results_data: Dict) -> go.Figure:
     
     # Extract nodes and edges from results
     baseline_results = results_data.get('baseline_results', {}).get('results', []) or []
+    if not isinstance(baseline_results, list):
+        baseline_results = []
+        
     embedding_results = results_data.get('embedding_results', {}).get('results', []) or []
+    if not isinstance(embedding_results, list):
+        embedding_results = []
     
     # Combine for visualization
     all_results = baseline_results + embedding_results
