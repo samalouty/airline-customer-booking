@@ -208,25 +208,26 @@ class LLMHandler:
         """
         context_parts = []
 
-        # Baseline results
+        # Baseline results - present as "Database Query Results" without technical details
         baseline = combined_results["baseline"]
         if baseline.get("results"):
-            context_parts.append("=== STRUCTURED QUERY RESULTS ===")
-            context_parts.append(f"Intent: {baseline.get('intent')}")
-            context_parts.append(f"Entities: {baseline.get('entities')}")
-            context_parts.append(f"Results: {json.dumps(baseline['results'], indent=2)}")
+            context_parts.append("=== FLIGHT DATABASE INFORMATION ===")
+            context_parts.append(f"Query Results: {json.dumps(baseline['results'], indent=2)}")
 
-        # Embedding results
+        # Embedding results - present as "Related Flight Information" without scores
         embedding = combined_results["embedding"]
         if embedding.get("results"):
-            context_parts.append("\n=== SEMANTIC SEARCH RESULTS ===")
+            context_parts.append("\n=== RELATED FLIGHT INFORMATION ===")
             for i, result in enumerate(embedding["results"][:3], 1):  # Top 3
-                context_parts.append(f"\n--- Match {i} (Score: {result.get('score', 0):.3f}) ---")
-                context_parts.append(result.get('semantic_text', 'N/A'))
-                context_parts.append(f"Details: Flight {result.get('flight_number')}, "
+                context_parts.append(f"\n--- Flight Record {i} ---")
+                if result.get('semantic_text'):
+                    context_parts.append(f"Summary: {result.get('semantic_text')}")
+                context_parts.append(f"Flight {result.get('flight_number')}: "
                                    f"{result.get('origin')} → {result.get('destination')}, "
-                                   f"Delay: {result.get('delay')}min, "
-                                   f"Food: {result.get('food_score')}/5")
+                                   f"Aircraft: {result.get('aircraft')}, "
+                                   f"Arrival: {result.get('delay')} min {'early' if result.get('delay', 0) < 0 else 'delay' if result.get('delay', 0) > 0 else 'on time'}, "
+                                   f"Food Rating: {result.get('food_score')}/5, "
+                                   f"Passenger: {result.get('generation')}, {result.get('loyalty')}")
 
         return "\n".join(context_parts) if context_parts else "No relevant data found."
 
@@ -244,22 +245,43 @@ class LLMHandler:
         """
         # Default persona for airline theme
         if not persona:
-            persona = """You are an Airline Flight Insights Assistant working for the airline company.
-Your role is to analyze flight data, passenger feedback, and operational metrics to provide
-actionable insights for improving airline operations and customer satisfaction.
-You speak professionally and focus on data-driven insights."""
+            persona = """You are a Senior Airline Business Intelligence Analyst presenting insights to airline executives and operations managers.
+Your role is to transform flight data, passenger feedback, and operational metrics into actionable business insights that drive strategic decisions.
 
-        task = f"""Answer the following question using ONLY the provided information from the knowledge graph.
-Do not make up information or hallucinate. If the data doesn't contain the answer, say so clearly.
+Your expertise includes:
+- Revenue optimization and passenger yield analysis
+- Route performance and network planning
+- Customer satisfaction drivers and loyalty program effectiveness
+- Operational efficiency, on-time performance, and delay root causes
+- Fleet utilization and aircraft performance comparisons
+- Competitive positioning and market share analysis
+
+Communication style:
+- Present findings as strategic business insights, not raw data
+- Highlight trends, patterns, and anomalies that impact the bottom line
+- Recommend specific actions based on the data
+- Quantify business impact when possible (e.g., "This affects X% of passengers")
+- Use airline industry terminology appropriately"""
+
+        task = f"""Analyze the provided data and deliver business insights for airline management.
+
+CRITICAL RULES:
+- NEVER mention technical terms like "intents", "entities", "embeddings", "semantic search", "vector scores", or "knowledge graph"
+- NEVER display raw data structures, JSON, scores, or internal system details
+- NEVER say "based on the data provided" or reference how you retrieved information
+- DO present insights as if you analyzed this data yourself
 
 Question: {user_query}
 
-Provide a clear, concise answer that:
-1. Directly addresses the question
-2. References specific data points from the context
-3. Provides actionable insights when relevant
-4. Uses a professional tone appropriate for airline management"""
+Your response MUST:
+1. Lead with the key business insight or finding
+2. Support with specific data points woven naturally into the narrative
+3. Explain the business implications (why this matters to the airline)
+4. Provide actionable recommendations when relevant
+5. Identify any concerning trends or opportunities for improvement
 
+Format your response as a professional business insight brief - concise, data-driven, and focused on what matters for airline operations and profitability."""
+        
         prompt = f"""### PERSONA
 {persona}
 

@@ -118,6 +118,11 @@ LLM_MODELS = {
     "openai/gpt-oss-120b": {
         "name": "GPT OSS 120B",
         "description": "Large scale open-source model"
+    },
+
+    "moonshotai/kimi-k2-instruct-0905": {
+        "name": "Kimi K2 Instruct",
+        "description": "High quality open-source model"
     }
 }
 
@@ -351,7 +356,7 @@ if not st.session_state.chat_history:
             </div>
             <div class="card-content">
                 "Which aircraft types have the highest average delay?"<br>
-                "Why are flights from LAX delayed today?"
+                "Show me the delay statistics for flights out of JNX."
             </div>
         </div>
         <div style="height: 1rem"></div>
@@ -360,8 +365,8 @@ if not st.session_state.chat_history:
                 <span style="color: #e879f9">�</span> Network Analysis
             </div>
             <div class="card-content">
-                "Show me all flights from JFK to London"<br>
-                "List all distinct routes from Miami."
+                "Show me all flights from LAX"<br>
+                "Flights from LAX to IAX."
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -373,18 +378,18 @@ if not st.session_state.chat_history:
                 <span style="color: #34d399">�</span> Passenger Experience
             </div>
             <div class="card-content">
-                "How do Millennials rate food on Boeing 777 flights?"<br>
-                "What is the average satisfaction score for Business Class?"
+                "How do Boomers rate the food service?"<br>
+                "What is the average satisfaction score for Premier Gold members in Economy?"
             </div>
         </div>
         <div style="height: 1rem"></div>
         <div class="glass-card">
             <div class="card-title">
-                <span style="color: #60a5fa">🤖</span> System Status
+                <span style="color: #60a5fa">🤖</span> Miscellaneous
             </div>
             <div class="card-content">
-                Connected to Neo4j Knowledge Graph.<br>
-                Ready for Hybrid Retrieval (RAG).
+                "Show me flights with severe delays (> 6 min) and poor food ratings (< 3)."<br>
+                "Find all flights from JNX to EWX longer than 2000 miles."
             </div>
         </div>
         """, unsafe_allow_html=True)
