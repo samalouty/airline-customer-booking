@@ -283,15 +283,15 @@ with st.sidebar:
     st.markdown("### Retrieval Strategy")
     retrieval_method = st.radio(
         "Method",
-        ["Baseline (Cypher Queries)", "Embedding (Semantic Search)", "Hybrid (Combined)"],
-        captions=["Exact graph matches", "Vector similarity search", "Best of both worlds"],
+        ["Baseline (Cypher Templates)", "Embedding (Vector Search)", "Hybrid (Baseline + Embedding)", "Query Automation (AI Generated)", "Composite (All Strategies)"],
+        captions=["Exact graph matches", "Vector similarity search", "Best of both worlds", "GPT-4o Generated Cypher", "Templates + Vectors + AI Query"],
         label_visibility="collapsed"
     )
     
     st.divider()
     
     embedding_model = "BAAI/bge-m3" # Default
-    if retrieval_method in ["Embedding (Semantic Search)", "Hybrid (Combined)"]:
+    if retrieval_method in ["Embedding (Vector Search)", "Hybrid (Baseline + Embedding)", "Composite (All Strategies)"]:
         st.markdown("### Embedding Model")
         embedding_model_key = st.selectbox(
             "Select Model",
@@ -447,7 +447,7 @@ if prompt := st.chat_input("Ask a question about flights, delays, or passengers.
         st.write(prompt)
 
     # Initialize handler
-    if retrieval_method in ["Embedding (Semantic Search)", "Hybrid (Combined)"]:
+    if retrieval_method in ["Embedding (Vector Search)", "Hybrid (Baseline + Embedding)", "Composite (All Strategies)"]:
         initialize_llm_handler(embedding_model)
     else:
         if st.session_state.llm_handler is None:
@@ -459,40 +459,21 @@ if prompt := st.chat_input("Ask a question about flights, delays, or passengers.
             handler = st.session_state.llm_handler
             
             # Logic to get result
-            if retrieval_method == "Baseline (Cypher Queries)":
-                result = handler.generate_answer(
-                    prompt, 
-                    model=llm_model_key, 
-                    temperature=temperature,
-                    use_embeddings=False
-                )
-            elif retrieval_method == "Embedding (Semantic Search)":
-                # Embedding logic: This part mirrors the original "Embedding" Logic block
-                baseline_results = {"method": "baseline_cypher", "results": [], "intent": "none", "entities": {}}
-                embedding_results = handler.get_embedding_results(prompt, top_k=top_k)
-                combined = handler.combine_results(baseline_results, embedding_results)
-                context = handler.format_context(combined)
-                prompt_text = handler.create_structured_prompt(prompt, context)
-                from config.openai_client import get_answer
-                answer = get_answer(prompt_text, model=llm_model_key, temperature=temperature)
-                
-                result = {
-                    "query": prompt,
-                    "baseline_results": baseline_results,
-                    "embedding_results": embedding_results,
-                    "combined_results": combined,
-                    "context": context,
-                    "prompt": prompt_text,
-                    "answer": answer,
-                    "model": llm_model_key
-                }
-            else: # Hybrid
-                result = handler.generate_answer(
-                    prompt, 
-                    model=llm_model_key, 
-                    temperature=temperature,
-                    use_embeddings=True
-                )
+            # Map UI selection to backend mode
+            mode_map = {
+                "Baseline (Cypher Templates)": "baseline",
+                "Embedding (Vector Search)": "embedding", 
+                "Hybrid (Baseline + Embedding)": "hybrid",
+                "Query Automation (AI Generated)": "automation",
+                "Composite (All Strategies)": "all"
+            }
+            
+            result = handler.generate_answer(
+                prompt,
+                model=llm_model_key,
+                temperature=temperature,
+                retrieval_mode=mode_map.get(retrieval_method, "baseline")
+            )
             
             # Show Answer immediately
             st.markdown(result['answer'])
@@ -503,13 +484,26 @@ if prompt := st.chat_input("Ask a question about flights, delays, or passengers.
                 
                 with tab1:
                     st.caption("Retrieved data used to generate the answer")
-                    if result['baseline_results'].get('results'):
+                    
+                    # 1. Baseline Results
+                    if result.get('baseline_results', {}).get('results'):
+                        st.subheader("📋 Baseline Results (Template)")
                         st.dataframe(format_results_table(result['baseline_results']['results']), use_container_width=True)
-                    else:
-                        st.info("No direct database matches.")
+                    
+                    # 2. Automated Query Results
+                    if result.get('automated_results', {}).get('results'):
+                        st.subheader("🤖 Automated Query Results (AI)")
+                        st.dataframe(format_results_table(result['automated_results']['results']), use_container_width=True)
+                    elif result.get('automated_results', {}).get('error'):
+                         st.error(f"Automation Error: {result['automated_results']['error']}")
                         
+                    if not result.get('baseline_results', {}).get('results') and not result.get('automated_results', {}).get('results'):
+                        st.info("No direct database matches from structured queries.")
+
+                    # 3. Embedding Results
                     if result.get('embedding_results', {}).get('results'):
-                        st.write("Context from vector search:")
+                        st.divider()
+                        st.subheader("🧠 Semantic Matches (Embeddings)")
                         for item in result['embedding_results']['results'][:3]:
                             with st.container():
                                 st.markdown(f"**Score: {item.get('score', 0):.2f}**")
@@ -537,7 +531,18 @@ if prompt := st.chat_input("Ask a question about flights, delays, or passengers.
                     if executed_query or (intent and intent != "unknown"):
                         display_cypher_query(intent, baseline_res.get('entities', {}), executed_query)
                     else:
-                        st.write("No Cypher query generated.")
+                        st.info("No Template Cypher query generated.")
+                        
+                    # Display Automated Query if present
+                    if result.get("automated_results", {}).get("generated_cypher"):
+                        st.divider()
+                        st.markdown("**🤖 AI Generated Query (GPT-4o)**")
+                        st.code(result["automated_results"]["generated_cypher"], language="cypher")
+                        
+                        err = result["automated_results"].get("error")
+                        if err:
+                            st.error(f"Query Error: {err}")
+
 
                 with tab5:
                     if show_debug:

@@ -11,7 +11,7 @@ from sentence_transformers import SentenceTransformer
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from config.openai_client import get_answer
+from config.openai_client import get_answer, get_openai_gpt4_answer
 from config.neo4j_client import driver as default_driver
 from MS3.base_retrieve import Neo4jRetriever
 from MS3.preprocessing import QueryPreprocessor
@@ -142,9 +142,85 @@ class LLMHandler:
             "top_k": top_k
         }
 
-    def combine_results(self, baseline_results: Dict, embedding_results: Dict) -> Dict[str, Any]:
+    def get_automated_query_results(self, user_query: str) -> Dict[str, Any]:
         """
-        Combine results from baseline and embedding methods.
+        Get results by dynamically generating a Cypher query using GPT-4o.
+        """
+        schema_desc = """
+        Nodes & Properties:
+        - Passenger: generation, loyalty_program_level, record_locator
+        - Journey: arrival_delay_minutes, food_satisfaction_score, passenger_class, feedback_ID, actual_flown_miles
+        - Flight: flight_number, fleet_type_description
+        - Airport: station_code
+
+        Relationships:
+        - (:Passenger)-[:TOOK]->(:Journey)
+        - (:Journey)-[:ON]->(:Flight)
+        - (:Flight)-[:DEPARTS_FROM]->(:Airport)
+        - (:Flight)-[:ARRIVES_AT]->(:Airport)
+        """
+
+        prompt = f"""You are a Neo4j Cypher expert. 
+        Generate a READ-ONLY Cypher query for the following user question based on the schema below.
+        
+        SCHEMA:
+        {schema_desc}
+
+        RULES:
+        1. Return ONLY the Cypher query. No markdown, no explanations.
+        2. Use Case-Insensitive matching for strings if unsure (e.g. toLower(n.prop) CONTAINS 'value')
+        3. LIMIT results to 20 unless specified otherwise.
+        4. Do NOT use procedures like APOC.
+        5. For aggregations (averages, counts), return clear aliases.
+
+        User Question: {user_query}
+        """
+
+        # Call GPT-4o to generate query
+        generated_cypher = get_openai_gpt4_answer(prompt)
+        
+        # Clean potential markdown
+        generated_cypher = generated_cypher.replace("```cypher", "").replace("```", "").strip()
+
+        if "Error" in generated_cypher:
+            return {
+                "method": "automated_cypher",
+                "results": [],
+                "error": generated_cypher,
+                "generated_cypher": None
+            }
+
+        # Execute Query
+        results = []
+        try:
+            with self.driver.session() as session:
+                res = session.run(generated_cypher)
+                # Serialize results: Convert Nodes/Relationships to dicts
+                for record in res:
+                    row = {}
+                    for key, value in record.items():
+                        if hasattr(value, 'items') and callable(value.items):
+                             row[key] = dict(value.items())
+                        else:
+                             row[key] = value
+                    results.append(row)
+        except Exception as e:
+            return {
+                "method": "automated_cypher",
+                "results": [],
+                "error": str(e),
+                "generated_cypher": generated_cypher
+            }
+            
+        return {
+            "method": "automated_cypher",
+            "results": results,
+            "generated_cypher": generated_cypher
+        }
+
+    def combine_results(self, baseline_results: Dict, embedding_results: Dict, automated_results: Dict = None) -> Dict[str, Any]:
+        """
+        Combine results from baseline, embedding, and automation methods.
 
         Strategy:
         - Remove duplicates (by feedback_ID if available)
@@ -155,6 +231,7 @@ class LLMHandler:
         Args:
             baseline_results: Results from Cypher queries
             embedding_results: Results from semantic search
+            automated_results: Results from automated Cypher generation (Optional)
 
         Returns:
             Combined and deduplicated results
@@ -162,37 +239,47 @@ class LLMHandler:
         combined = {
             "baseline": baseline_results,
             "embedding": embedding_results,
+            "automation": automated_results if automated_results else {},
             "merged_data": []
         }
 
         # Track seen feedback IDs to avoid duplicates
         seen_ids = set()
 
-        # Add baseline results first (they're exact matches)
-        baseline_data = baseline_results.get("results", [])
-        if isinstance(baseline_data, list) and baseline_data:
-            for item in baseline_data:
-                # Extract feedback_ID if available
-                feedback_id = item.get('feedback_ID') or item.get('feedback_id')
-                if feedback_id and feedback_id not in seen_ids:
-                    seen_ids.add(feedback_id)
-                    combined["merged_data"].append({
-                        "source": "baseline",
-                        "data": item
-                    })
+        # Helper to process a list of results
+        def process_list(source_name, data_list, score_key=None):
+            if isinstance(data_list, list) and data_list:
+                for item in data_list:
+                    # Try to find a unique ID
+                    item_id = item.get('feedback_ID') or item.get('feedback_id') or str(item)
+                    
+                    # For simple aggregations (no IDs), always add them
+                    if not (item.get('feedback_ID') or item.get('feedback_id')):
+                         combined["merged_data"].append({
+                            "source": source_name,
+                            "data": item
+                        })
+                    elif item_id and item_id not in seen_ids:
+                        seen_ids.add(item_id)
+                        entry = {"source": source_name, "data": item}
+                        if score_key and score_key in item:
+                            entry["score"] = item[score_key]
+                        combined["merged_data"].append(entry)
 
-        # Add embedding results (for semantic context)
+        # 1. Add Automation Results (High Priority - Dynamic)
+        if automated_results:
+             process_list("automation", automated_results.get("results", []))
+
+        # 2. Add Baseline Results (Medium Priority - Fixed Templates)
+
+        # Add baseline results first (they're exact matches)
+        # 2. Add Baseline Results (Medium Priority - Fixed Templates)
+        baseline_data = baseline_results.get("results", [])
+        process_list("baseline", baseline_data)
+
+        # 3. Add Embedding Results (Lower Priority - Contextual)
         embedding_data = embedding_results.get("results", [])
-        if isinstance(embedding_data, list):
-            for item in embedding_data:
-                feedback_id = item.get('feedback_id')
-                if feedback_id and feedback_id not in seen_ids:
-                    seen_ids.add(feedback_id)
-                    combined["merged_data"].append({
-                        "source": "embedding",
-                        "data": item,
-                        "score": item.get("score", 0)
-                    })
+        process_list("embedding", embedding_data, score_key="score")
 
         return combined
 
@@ -213,6 +300,13 @@ class LLMHandler:
         if baseline.get("results"):
             context_parts.append("=== FLIGHT DATABASE INFORMATION ===")
             context_parts.append(f"Query Results: {json.dumps(baseline['results'], indent=2)}")
+
+        # Automation results
+        automation = combined_results.get("automation", {})
+        if automation.get("results"):
+            context_parts.append("=== AUTOMATED QUERY RESULTS (GPT-4o Generated) ===")
+            context_parts.append(f"Generated Cypher: {automation.get('generated_cypher')}")
+            context_parts.append(f"Results: {json.dumps(automation['results'], indent=2)}")
 
         # Embedding results - present as "Related Flight Information" without scores
         embedding = combined_results["embedding"]
@@ -296,7 +390,7 @@ Format your response as a professional business insight brief - concise, data-dr
         return prompt
 
     def generate_answer(self, user_query: str, model: str = "llama-3.1-8b-instant",
-                       temperature: float = 0.1, use_embeddings: bool = True) -> Dict[str, Any]:
+                       temperature: float = 0.1, retrieval_mode: str = "baseline", use_embeddings: bool = False) -> Dict[str, Any]:
         """
         Generate a complete answer using the Graph-RAG pipeline.
 
@@ -304,21 +398,32 @@ Format your response as a professional business insight brief - concise, data-dr
             user_query: The user's natural language query
             model: LLM model to use
             temperature: Temperature for generation
-            use_embeddings: Whether to include embedding results
+            # mode: 'baseline', 'embedding', 'hybrid', 'automation', 'all'
+            retrieval_mode: str = 'baseline' 
+            use_embeddings: bool = True # Deprecated, kept for backward compat
 
         Returns:
             Dictionary containing query, context, prompt, and answer
         """
-        # Step 1: Get baseline results
-        baseline_results = self.get_baseline_results(user_query)
-
-        # Step 2: Get embedding results (if enabled)
+        # Initialize result containers
+        baseline_results = {}
         embedding_results = {}
-        if use_embeddings:
-            embedding_results = self.get_embedding_results(user_query)
+        automated_results = {}
+
+        # 1. Baseline logic
+        if retrieval_mode in ['baseline', 'hybrid', 'all']:
+             baseline_results = self.get_baseline_results(user_query)
+
+        # 2. Embedding logic
+        if retrieval_mode in ['embedding', 'hybrid', 'all'] or (retrieval_mode == 'baseline' and use_embeddings): # Handle legacy flag
+             embedding_results = self.get_embedding_results(user_query)
+
+        # 3. Automation logic (New)
+        if retrieval_mode in ['automation', 'all']:
+             automated_results = self.get_automated_query_results(user_query)
 
         # Step 3: Combine results
-        combined_results = self.combine_results(baseline_results, embedding_results)
+        combined_results = self.combine_results(baseline_results, embedding_results, automated_results)
 
         # Step 4: Format context
         context = self.format_context(combined_results)
@@ -336,6 +441,7 @@ Format your response as a professional business insight brief - concise, data-dr
             "query": user_query,
             "baseline_results": baseline_results,
             "embedding_results": embedding_results,
+            "automated_results": automated_results,
             "combined_results": combined_results,
             "context": context,
             "prompt": prompt,
