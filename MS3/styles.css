@@ -1,0 +1,293 @@
+/* 
+   MASTER CLASS STYLING - FLIGHT INSIGHTS AI 
+   Theme: Midnight Luxury
+   Palette: Rich Black (#020617), Slate Surface (#0f172a), Text (#f8fafc), Accent (#6366f1)
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+    --bg-color: #020617;
+    --surface-color: #0f172a;
+    --border-color: #1e293b;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --accent-color: #6366f1;
+    --accent-hover: #4f46e5;
+    --success-color: #10b981;
+    --font-sans: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Base App Styling */
+.stApp {
+    background-color: var(--bg-color) !important;
+    font-family: var(--font-sans) !important;
+}
+
+/* Headers */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: var(--font-sans) !important;
+    letter-spacing: -0.02em;
+    color: var(--text-primary) !important;
+}
+
+h1 {
+    font-weight: 700;
+    font-size: 3rem;
+    background: linear-gradient(to right, #ffffff, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Sidebar Styling */
+[data-testid="stSidebar"] {
+    background-color: #000000 !important;
+    /* Deepest black for contrast */
+    border-right: 1px solid var(--border-color);
+}
+
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+    color: var(--text-secondary) !important;
+    font-weight: 500;
+    font-size: 0.85rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+[data-testid="stSidebar"] hr {
+    margin: 1.5rem 0;
+}
+
+/* Inputs & Widgets */
+.stTextInput input,
+.stSelectbox div[data-baseweb="select"]>div,
+.stNumberInput input {
+    background-color: var(--surface-color) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+    transition: all 0.2s ease;
+}
+
+.stTextInput input:focus,
+.stSelectbox div[data-baseweb="select"]>div:focus-within {
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 0 0 1px var(--accent-color) !important;
+}
+
+/* Buttons */
+.stButton button {
+    background-color: var(--accent-color) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 0.6rem 1.2rem !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.stButton button:hover {
+    background-color: var(--accent-hover) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+div[data-testid="stButton"] button[kind="secondary"] {
+    background-color: transparent !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-secondary) !important;
+    box-shadow: none !important;
+}
+
+div[data-testid="stButton"] button[kind="secondary"]:hover {
+    border-color: var(--text-secondary) !important;
+    color: var(--text-primary) !important;
+    background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* Chat Search/Input Area */
+.stChatInputContainer {
+    padding-bottom: 2rem;
+}
+
+.stChatInput textarea {
+    background-color: var(--surface-color) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+    border-radius: 12px !important;
+}
+
+.stChatInput textarea:focus {
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Cards & Containers - Custom Class */
+.glass-card {
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+    animation: fadeIn 0.5s ease-out forwards;
+}
+
+.glass-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(99, 102, 241, 0.3);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+.card-title {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.card-content {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+/* Chat Messages */
+.stChatMessage {
+    padding: 1rem 0 !important;
+    background-color: transparent !important;
+}
+
+[data-testid="stChatMessageContent"] {
+    background-color: transparent !important;
+    border: 1px solid var(--border-color);
+    border-radius: 12px !important;
+    padding: 1rem 1.5rem !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+div[data-testid="stChatMessage"]:nth-child(2n+1) [data-testid="stChatMessageContent"] {
+    background-color: rgba(99, 102, 241, 0.05) !important;
+    border-color: rgba(99, 102, 241, 0.2);
+}
+
+/* Expander */
+.streamlit-expanderHeader {
+    background-color: transparent !important;
+    border: 1px solid var(--border-color);
+    border-radius: 8px !important;
+    color: var(--text-secondary) !important;
+}
+
+.streamlit-expanderContent {
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 2rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 3rem;
+    white-space: nowrap;
+    border: none;
+    background-color: transparent;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.stTabs [aria-selected="true"] {
+    color: var(--accent-color) !important;
+    border-bottom: 2px solid var(--accent-color) !important;
+}
+
+/* Metrics */
+[data-testid="stMetricValue"] {
+    font-family: var(--font-mono) !important;
+    color: var(--accent-color) !important;
+    font-size: 1.8rem !important;
+}
+
+[data-testid="stMetricLabel"] {
+    color: var(--text-secondary) !important;
+}
+
+/* Code Blocks */
+code {
+    font-family: var(--font-mono) !important;
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: #e2e8f0 !important;
+    border-radius: 4px;
+    padding: 0.2em 0.4em;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+pre {
+    background-color: #020617 !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+}
+
+/* Dividers */
+hr {
+    border-color: var(--border-color) !important;
+    opacity: 0.5;
+}
+
+/* Toast/Alerts */
+.stAlert {
+    background-color: rgba(15, 23, 42, 0.9) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-color);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}

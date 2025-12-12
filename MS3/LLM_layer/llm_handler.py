@@ -40,9 +40,9 @@ class LLMHandler:
         self.preprocessor = QueryPreprocessor(self.retriever)
         self.driver = driver if driver else default_driver
 
-        # Load embedding model for semantic search
-        print(f"Loading embedding model: {embedding_model}")
-        self.embedding_model = SentenceTransformer(embedding_model)
+        # Load embedding model for semantic search on CPU to avoid CUDA OOM errors
+        print(f"Loading embedding model: {embedding_model} (on CPU)")
+        self.embedding_model = SentenceTransformer(embedding_model, device='cpu')
         self.embedding_index = self._get_index_for_model(embedding_model)
 
     def _get_index_for_model(self, model_name: str) -> str:
