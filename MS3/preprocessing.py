@@ -30,7 +30,7 @@ SEMANTIC_THRESHOLDS = {
         "poor": {"max_food_satisfaction": 2},
         "bad": {"max_food_satisfaction": 2},
         "low": {"max_food_satisfaction": 2},
-        "average": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
+        "mid": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
         "good": {"min_food_satisfaction": 4},
         "excellent": {"min_food_satisfaction": 5},
         "high": {"min_food_satisfaction": 4}
@@ -80,7 +80,10 @@ class QueryPreprocessor:
                 {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "premier"}, {"LOWER": "platinum"}]},
                 {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "premier"}, {"LOWER": "1k"}]},
                 {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "non-elite"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "non"}, {"LOWER": "-"}, {"LOWER": "elite"}]},
                 {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "non"}, {"LOWER": "elite"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "nonelite"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"TEXT": {"REGEX": "^[Nn]on-?[Ee]lite$"}}]},
 
                 # -- Generations --
                 {"label": "GENERATION", "pattern": [{"LOWER": "boomer"}]},
@@ -292,9 +295,9 @@ class QueryPreprocessor:
         """
         parameters = {}
         
-        # Explicit mileage patterns
-        miles_greater = re.search(r'(?:longer|greater|more|over|above|exceeding|at least|minimum)\s*(?:than\s*)?(\d+)\s*(?:miles?)?', user_input, re.IGNORECASE)
-        miles_less = re.search(r'(?:shorter|less|under|below|within|at most|maximum)\s*(?:than\s*)?(\d+)\s*(?:miles?)?', user_input, re.IGNORECASE)
+        # Explicit mileage patterns - MUST have "miles" to avoid matching "minutes"
+        miles_greater = re.search(r'(?:longer|greater|more|over|above|exceeding|at least|minimum)\s*(?:than\s*)?(\d+)\s*miles?', user_input, re.IGNORECASE)
+        miles_less = re.search(r'(?:shorter|less|under|below|within|at most|maximum)\s*(?:than\s*)?(\d+)\s*miles?', user_input, re.IGNORECASE)
         miles_exact = re.search(r'(\d{3,5})\s*miles?', user_input, re.IGNORECASE)
         
         if miles_greater:
@@ -400,7 +403,7 @@ class QueryPreprocessor:
             parameters.update(SEMANTIC_THRESHOLDS["distance"]["medium"])
         
         # Legs inference
-        if any(word in input_lower for word in ['direct flight', 'nonstop', 'non-stop', 'single leg']):
+        if any(word in input_lower for word in ['direct flight', 'direct flights', 'nonstop', 'non-stop', 'non stop', 'single leg']):
             parameters["max_legs"] = SEMANTIC_THRESHOLDS["legs"]["direct"]["max_legs"]
         elif any(word in input_lower for word in ['connecting flight', 'multi-leg', 'multi leg', 'with connection', 'with stop']):
             parameters["min_legs"] = SEMANTIC_THRESHOLDS["legs"]["connecting"]["min_legs"]

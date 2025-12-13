@@ -321,10 +321,6 @@ RETURN d.station_code AS destination,
 ORDER BY flight_count DESC LIMIT 10
 
 
-===========================================
-NEW QUESTIONS - MILEAGE PARAMETERS
-===========================================
-
 Q36. Find flights from DEX to EWX between 1000 and 2000 miles.
 
 MATCH (origin:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(dest:Airport {station_code: $dest})
@@ -398,4 +394,197 @@ RETURN j.feedback_ID, j.arrival_delay_minutes, j.actual_flown_miles,
 ORDER BY j.arrival_delay_minutes LIMIT 20
 
 
+Q43. Find me all long-haul flights (over 4000 miles).
 
+MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport)
+MATCH (f)-[:ARRIVES_AT]->(d:Airport)
+WHERE j.actual_flown_miles >= $min_miles
+RETURN DISTINCT o.station_code AS origin, d.station_code AS destination,
+       f.flight_number, f.fleet_type_description, j.actual_flown_miles
+ORDER BY j.actual_flown_miles DESC LIMIT 20
+
+
+Q44. Show me short-haul flights under 1000 miles.
+
+MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport)
+MATCH (f)-[:ARRIVES_AT]->(d:Airport)
+WHERE j.actual_flown_miles <= $max_miles
+RETURN DISTINCT o.station_code AS origin, d.station_code AS destination,
+       f.flight_number, f.fleet_type_description, j.actual_flown_miles
+ORDER BY j.actual_flown_miles LIMIT 20
+
+
+Q45. Find flights with more than 2000 miles.
+
+MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport)
+MATCH (f)-[:ARRIVES_AT]->(d:Airport)
+WHERE j.actual_flown_miles >= $min_miles
+RETURN DISTINCT o.station_code AS origin, d.station_code AS destination,
+       f.flight_number, f.fleet_type_description, j.actual_flown_miles
+ORDER BY j.actual_flown_miles DESC LIMIT 20
+
+
+Q46. Show medium-haul flights between 1000 and 4000 miles.
+
+MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport)
+MATCH (f)-[:ARRIVES_AT]->(d:Airport)
+WHERE j.actual_flown_miles >= $min_miles AND j.actual_flown_miles <= $max_miles
+RETURN DISTINCT o.station_code AS origin, d.station_code AS destination,
+       f.flight_number, f.fleet_type_description, j.actual_flown_miles
+ORDER BY j.actual_flown_miles DESC LIMIT 20
+
+
+Q47. What is the most common loyalty program level?
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+RETURN p.loyalty_program_level AS loyalty_tier,
+       count(DISTINCT p) AS passenger_count,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay
+ORDER BY passenger_count DESC
+
+
+Q48. Show me the loyalty tier distribution with their average stats.
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+RETURN p.loyalty_program_level AS loyalty_tier,
+       count(DISTINCT p) AS passenger_count,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay
+ORDER BY passenger_count DESC
+
+
+Q49. How many Premier Gold members are there and what are their stats?
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+WHERE p.loyalty_program_level = $loyalty_tier
+RETURN p.loyalty_program_level AS loyalty_tier,
+       count(DISTINCT p) AS passenger_count,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay,
+       avg(j.actual_flown_miles) AS avg_miles
+
+
+Q50. Which loyalty tier has the best satisfaction scores?
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+RETURN p.loyalty_program_level AS loyalty_tier,
+       count(DISTINCT p) AS passenger_count,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay
+ORDER BY avg_food_satisfaction DESC
+
+
+Q51. What is the average experience for Premier Gold members?
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+WHERE p.loyalty_program_level = $loyalty_tier
+RETURN p.loyalty_program_level AS loyalty_tier,
+       count(j) AS total_journeys,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay_minutes,
+       avg(j.actual_flown_miles) AS avg_miles,
+       avg(j.number_of_legs) AS avg_legs
+
+
+Q52. Show me the average experience for Boomers.
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+WHERE p.generation = $generation
+RETURN p.generation AS generation,
+       count(j) AS total_journeys,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay_minutes,
+       avg(j.actual_flown_miles) AS avg_miles
+
+
+Q53. What are the aggregate statistics for Economy class passengers?
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+WHERE j.passenger_class = $class
+RETURN j.passenger_class AS class,
+       count(j) AS total_journeys,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay_minutes,
+       avg(j.actual_flown_miles) AS avg_miles
+
+
+Q54. Compare average experience across all loyalty tiers.
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+RETURN p.loyalty_program_level AS loyalty_tier,
+       count(j) AS total_journeys,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay_minutes,
+       avg(j.actual_flown_miles) AS avg_miles
+ORDER BY total_journeys DESC
+
+
+Q55. For the B777-200 what is the food satisfaction?
+
+MATCH (j:Journey)-[:ON]->(f:Flight)
+WHERE f.fleet_type_description CONTAINS $fleet_type
+RETURN f.fleet_type_description AS aircraft_type,
+       avg(j.food_satisfaction_score) AS average_food_rating,
+       min(j.food_satisfaction_score) AS min_food_rating,
+       max(j.food_satisfaction_score) AS max_food_rating,
+       count(j) AS total_journeys
+
+
+Q56. What is the average delay for direct flights?
+
+MATCH (j:Journey)-[:ON]->(f:Flight)
+WHERE j.number_of_legs <= $max_legs
+RETURN avg(j.arrival_delay_minutes) AS avg_delay,
+       min(j.arrival_delay_minutes) AS min_delay,
+       max(j.arrival_delay_minutes) AS max_delay,
+       count(j) AS total_journeys,
+       'Direct Flights' AS flight_type
+
+
+Q57. For premier gold loyalty level how many Gen-X are there?
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+WHERE p.loyalty_program_level = $loyalty_tier AND p.generation = $generation
+RETURN p.loyalty_program_level AS loyalty_tier,
+       p.generation AS generation,
+       count(DISTINCT p) AS passenger_count,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay,
+       avg(j.actual_flown_miles) AS avg_miles,
+       avg(j.number_of_legs) AS avg_legs
+
+
+Q58. Show me non-elite members and their satisfaction scores.
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+WHERE p.loyalty_program_level = $loyalty_tier
+RETURN p.loyalty_program_level AS loyalty_tier,
+       count(DISTINCT p) AS passenger_count,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay,
+       avg(j.actual_flown_miles) AS avg_miles,
+       avg(j.number_of_legs) AS avg_legs
+
+
+Q59. What is the average legs for Premier Silver members?
+
+MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+WHERE p.loyalty_program_level = $loyalty_tier
+RETURN p.loyalty_program_level AS loyalty_tier,
+       count(DISTINCT p) AS passenger_count,
+       avg(j.food_satisfaction_score) AS avg_food_satisfaction,
+       avg(j.arrival_delay_minutes) AS avg_delay,
+       avg(j.actual_flown_miles) AS avg_miles,
+       avg(j.number_of_legs) AS avg_legs
+
+
+Q60. Show me nonstop flight delays.
+
+MATCH (j:Journey)-[:ON]->(f:Flight)
+WHERE j.number_of_legs <= $max_legs
+RETURN avg(j.arrival_delay_minutes) AS avg_delay,
+       min(j.arrival_delay_minutes) AS min_delay,
+       max(j.arrival_delay_minutes) AS max_delay,
+       count(j) AS total_journeys,
+       'Direct Flights' AS flight_type
