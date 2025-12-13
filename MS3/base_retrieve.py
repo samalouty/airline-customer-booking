@@ -70,6 +70,40 @@ class Neo4jRetriever:
     def get_query_for_intent(self, intent, entities):
         """
         Maps Intent + Entities -> Specific Cypher Query
+        If no specific handler matches all entities, falls back to dynamic query builder.
+        """
+        
+        # Try to get a specific query for this intent
+        specific_query = self._get_specific_query(intent, entities)
+        
+        # If we got a specific query, check if it uses all the important entities
+        if specific_query:
+            # Check if the query uses the key entities that were detected
+            key_entities = {'generation', 'loyalty_tier', 'fleet_type', 'origin', 'dest', 'class',
+                          'min_delay', 'max_delay', 'min_miles', 'max_miles', 'min_legs', 'max_legs',
+                          'min_food_satisfaction', 'max_food_satisfaction'}
+            detected_keys = set(entities.keys()) & key_entities
+            
+            # Check which entities are actually referenced in the query
+            used_entities = set()
+            for key in detected_keys:
+                if f'${key}' in specific_query or f'$_{key}' in specific_query:
+                    used_entities.add(key)
+            
+            # If all detected key entities are used, return the specific query
+            if detected_keys == used_entities or not detected_keys:
+                return specific_query
+            
+            # If some entities are not used, fall back to dynamic query
+            print(f"[FALLBACK] Not all entities used. Detected: {detected_keys}, Used: {used_entities}")
+            return self._build_fallback_query(entities)
+        
+        # No specific query found, use fallback
+        return self._build_fallback_query(entities)
+    
+    def _get_specific_query(self, intent, entities):
+        """
+        Returns the specific query for an intent, or None if no match.
         """
         
         # 1. INTENT: search_network
@@ -759,8 +793,8 @@ class Neo4jRetriever:
                 """
             return None
 
-        # GENERAL FALLBACK: Build dynamic query from entities/parameters
-        return self._build_fallback_query(entities)
+        # No specific handler matched
+        return None
 
     def _build_fallback_query(self, entities):
         """
