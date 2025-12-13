@@ -98,12 +98,7 @@ LLM_MODELS = {
     "meta-llama/llama-4-scout-17b-16e-instruct": {
         "name": "Llama 4 Scout",
         "description": "Vision capable, 10M context"
-    },
-    "meta-llama/llama-4-maverick-17b-128e-instruct": {
-        "name": "Llama 4 Maverick",
-        "description": "Advanced Vision capabilities"
-    },
-    
+    },    
     # Reasoning Models
     "qwen/qwen3-32b": {
         "name": "Qwen 3 32B",

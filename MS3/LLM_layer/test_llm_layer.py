@@ -97,7 +97,8 @@ def test_model_comparison():
     test_questions = questions
 
     # Models to compare (using free Groq models)
-    models_to_test = ["gpt-oss-20b", "llama-3.3-70b", "qwen3-32b"]
+    models_to_test = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b","openai/gpt-oss-20b","openai/gpt-oss-120b","moonshotai/kimi-k2-instruct-0905"]
+    # models_to_test = ["openai/gpt-oss-20b", "llama-3.3-70b", "qwen3-32b"]
     # models_to_test = ["llama-3.3-70b"]
 
     print(f"\nTesting {len(test_questions)} questions across {len(models_to_test)} models")

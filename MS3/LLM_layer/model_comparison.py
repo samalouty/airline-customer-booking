@@ -25,38 +25,143 @@ class ModelComparator:
     - Qualitative comparison (answer quality)
     """
 
-    # Available models through Groq API (Updated December 2024)
-    # Note: Some models have been decommissioned by Groq
+    # Available models - synced with app.py LLM_MODELS
     MODELS = {
-        # RECOMMENDED: Fast & Production-Ready
-        "llama-3.1-8b": "llama-3.1-8b-instant",          # ✅ Fast, reliable, low cost
-        "llama-3.3-70b": "llama-3.3-70b-versatile",      # ✅ High quality, versatile
-        
-        # Llama 4 (Vision & Multimodal - NEW)
-        "llama-4-scout": "meta-llama/llama-4-scout-17b-16e-instruct",      # ✅ Vision, 10M context
-        "llama-4-maverick": "meta-llama/llama-4-maverick-17b-128e-instruct", # ✅ Vision, advanced
-        
-        # Reasoning Models (Chain-of-Thought)
-        "deepseek-r1": "deepseek-r1-distill-llama-70b",  # ✅ Strong reasoning
-        "qwen3-32b": "qwen/qwen3-32b" ,
+        # Recommended Models
+        "llama-3.1-8b-instant": {
+            "name": "Llama 3.1 8B (Fast)",
+            "description": "Fast, reliable, low cost"
+        },
+        "llama-3.3-70b-versatile": {
+            "name": "Llama 3.3 70B (Versatile)",
+            "description": "High quality, versatile"
+        },
 
-        "gpt-oss-20b": "openai/gpt-oss-20b",            # ✅ Balanced
-        "gpt-oss-120b": "openai/gpt-oss-120b",          # ✅ Larger model
-        
-        
-        # Default (most reliable)
-        "default": "llama-3.1-8b-instant"
+        # Llama 4 Series
+        "meta-llama/llama-4-scout-17b-16e-instruct": {
+            "name": "Llama 4 Scout",
+            "description": "Vision capable, 10M context"
+        },
+        # Reasoning Models
+        "qwen/qwen3-32b": {
+            "name": "Qwen 3 32B",
+            "description": "Strong performance, emerging model"
+        },
+
+        # GPT OSS Models
+        "openai/gpt-oss-20b": {
+            "name": "GPT OSS 20B",
+            "description": "Balanced open-source model"
+        },
+        "openai/gpt-oss-120b": {
+            "name": "GPT OSS 120B",
+            "description": "Large scale open-source model"
+        },
+
+        "moonshotai/kimi-k2-instruct-0905": {
+            "name": "Kimi K2 Instruct",
+            "description": "High quality open-source model"
+        }
     }
 
-    def __init__(self, llm_handler: LLMHandler = None):
+    def __init__(self, llm_handler: LLMHandler = None, test_results_path: str = None):
         """
         Initialize the model comparator.
 
         Args:
             llm_handler: LLMHandler instance (creates new one if not provided)
+            test_results_path: Path to test_results_final.json for accuracy comparison
         """
         self.handler = llm_handler if llm_handler else LLMHandler()
         self.results = []
+        self.expected_results = {}
+
+        # Load expected results if path provided
+        if test_results_path is None:
+            # Default path
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            test_results_path = os.path.join(script_dir, '..', 'test_results_final.json')
+
+        if os.path.exists(test_results_path):
+            self.load_expected_results(test_results_path)
+
+    def load_expected_results(self, filepath: str):
+        """
+        Load expected results from test_results_final.json.
+
+        Args:
+            filepath: Path to the test results JSON file
+        """
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Create a mapping from question_text to expected results
+            for result in data.get('results', []):
+                question = result.get('question_text', '').strip()
+                if question:
+                    self.expected_results[question] = {
+                        'question_id': result.get('question_id'),
+                        'intent': result.get('intent'),
+                        'success': result.get('success', False),
+                        'query_results': result.get('query_results', []),
+                        'result_count': result.get('result_count', 0)
+                    }
+
+            print(f"✓ Loaded {len(self.expected_results)} expected results from test file")
+        except Exception as e:
+            print(f"⚠ Could not load expected results: {e}")
+            self.expected_results = {}
+
+    def compare_with_expected(self, query: str, actual_result: Dict) -> Dict[str, Any]:
+        """
+        Compare actual model result with expected result from test_results_final.json.
+
+        Args:
+            query: The query text
+            actual_result: The result from the model
+
+        Returns:
+            Comparison metrics including accuracy
+        """
+        expected = self.expected_results.get(query.strip())
+
+        if not expected:
+            return {
+                'has_expected': False,
+                'matches_expected': None,
+                'note': 'No expected result found for this query'
+            }
+
+        # Get actual intent and results
+        actual_intent = actual_result.get('baseline_results', {}).get('intent')
+        actual_query_results = actual_result.get('baseline_results', {}).get('results', [])
+        actual_result_count = len(actual_query_results) if isinstance(actual_query_results, list) else 0
+
+        # Compare intent
+        intent_match = actual_intent == expected['intent']
+
+        # Compare result count (similar count indicates similar query execution)
+        result_count_match = actual_result_count == expected['result_count']
+
+        # If expected test was successful, check if we got similar results
+        matches_expected = (
+            intent_match and
+            (result_count_match or abs(actual_result_count - expected['result_count']) <= 2) and
+            actual_result_count > 0
+        )
+
+        return {
+            'has_expected': True,
+            'matches_expected': matches_expected,
+            'expected_intent': expected['intent'],
+            'actual_intent': actual_intent,
+            'intent_match': intent_match,
+            'expected_result_count': expected['result_count'],
+            'actual_result_count': actual_result_count,
+            'result_count_match': result_count_match,
+            'expected_success': expected['success']
+        }
 
     def run_single_comparison(self, query: str, models: List[str],
                             use_embeddings: bool = True) -> Dict[str, Any]:
@@ -83,9 +188,11 @@ class ModelComparator:
         print(f"{'='*80}")
 
         for model_key in models:
-            model_name = self.MODELS.get(model_key, model_key)
+            # model_key is now the full model ID (e.g., "llama-3.1-8b-instant")
+            model_info = self.MODELS.get(model_key, {})
+            model_display_name = model_info.get("name", model_key)
 
-            print(f"\nTesting model: {model_key} ({model_name})")
+            print(f"\nTesting model: {model_display_name} ({model_key})")
 
             try:
                 # Measure response time
@@ -93,7 +200,7 @@ class ModelComparator:
 
                 result = self.handler.generate_answer(
                     user_query=query,
-                    model=model_name,
+                    model=model_key,
                     temperature=0.1,
                     use_embeddings=use_embeddings
                 )
@@ -105,8 +212,12 @@ class ModelComparator:
                 answer_length = len(answer) if answer else 0
                 word_count = len(answer.split()) if answer else 0
 
+                # Compare with expected results
+                accuracy_check = self.compare_with_expected(query, result)
+
                 comparison["models"][model_key] = {
-                    "model_name": model_name,
+                    "model_name": model_display_name,
+                    "model_id": model_key,
                     "answer": answer,
                     "response_time": response_time,
                     "answer_length": answer_length,
@@ -114,17 +225,23 @@ class ModelComparator:
                     "context_length": len(result.get("context", "")),
                     "baseline_results_count": len(result.get("baseline_results", {}).get("results", [])),
                     "embedding_results_count": len(result.get("embedding_results", {}).get("results", [])),
+                    "accuracy_check": accuracy_check,
+                    "correct": accuracy_check.get('matches_expected', False),
                     "error": None
                 }
 
-                print(f"✓ Response time: {response_time:.2f}s | Words: {word_count}")
+                match_indicator = "✓" if accuracy_check.get('matches_expected') else "✗"
+                print(f"{match_indicator} Response time: {response_time:.2f}s | Words: {word_count} | Correct: {accuracy_check.get('matches_expected', 'N/A')}")
 
             except Exception as e:
                 print(f"✗ Error: {e}")
                 comparison["models"][model_key] = {
-                    "model_name": model_name,
+                    "model_name": model_display_name,
+                    "model_id": model_key,
                     "answer": None,
                     "response_time": None,
+                    "accuracy_check": {'has_expected': False, 'matches_expected': False},
+                    "correct": False,
                     "error": str(e)
                 }
 
@@ -181,10 +298,12 @@ class ModelComparator:
         # Calculate statistics per model
         for model_key in all_models:
             model_data = []
+            all_attempts = []
 
             for result in self.results:
                 if model_key in result["models"]:
                     model_result = result["models"][model_key]
+                    all_attempts.append(model_result)
                     if model_result["response_time"] is not None:
                         model_data.append(model_result)
 
@@ -193,9 +312,20 @@ class ModelComparator:
                 avg_word_count = sum(d["word_count"] for d in model_data) / len(model_data)
                 success_rate = len(model_data) / len(self.results)
 
+                # Calculate accuracy based on comparison with expected results
+                correct_count = sum(1 for d in all_attempts if d.get("correct", False))
+                accuracy = correct_count / len(all_attempts) if all_attempts else 0
+
+                # Count queries with expected results available
+                queries_with_expected = sum(1 for d in all_attempts
+                                          if d.get("accuracy_check", {}).get("has_expected", False))
+
                 summary["models"][model_key] = {
                     "total_queries": len(model_data),
                     "success_rate": success_rate,
+                    "accuracy": accuracy,
+                    "correct_count": correct_count,
+                    "queries_with_expected": queries_with_expected,
                     "avg_response_time": avg_response_time,
                     "avg_word_count": avg_word_count,
                     "min_response_time": min(d["response_time"] for d in model_data),
@@ -233,17 +363,24 @@ class ModelComparator:
 
         print(f"\nTotal Queries: {summary['total_queries']}")
         print(f"\nModel Performance:")
-        print("-"*80)
-        print(f"{'Model':<20} {'Success':<10} {'Avg Time':<12} {'Avg Words':<12}")
-        print("-"*80)
+        print("-"*100)
+        print(f"{'Model':<30} {'Accuracy':<12} {'Success':<10} {'Avg Time':<12} {'Avg Words':<12}")
+        print("-"*100)
 
         for model_key, stats in summary["models"].items():
-            print(f"{model_key:<20} "
+            # Get model display name from MODELS dict
+            model_info = self.MODELS.get(model_key, {})
+            display_name = model_info.get("name", model_key)[:28]
+
+            print(f"{display_name:<30} "
+                  f"{stats['accuracy']*100:>6.1f}%     "
                   f"{stats['success_rate']*100:>6.1f}%   "
                   f"{stats['avg_response_time']:>8.2f}s    "
                   f"{stats['avg_word_count']:>8.1f}")
 
-        print("-"*80)
+        print("-"*100)
+        print(f"\nNote: Accuracy shows correct answers vs. test_results_final.json")
+        print(f"      Success shows queries that completed without errors")
 
 
 # Test the comparator
@@ -259,8 +396,8 @@ if __name__ == "__main__":
         "Show me flights with severe delays and poor food ratings."
     ]
 
-    # Models to test (using active free Groq models)
-    test_models = ["gpt-oss-20b", "kimi-k2", "qwen3-32b"]
+    # Models to test (using model IDs from MODELS dictionary)
+    test_models = ["openai/gpt-oss-20b", "moonshotai/kimi-k2-instruct-0905", "qwen/qwen3-32b"]
 
     # Run comparison
     comparator.run_batch_comparison(test_queries, test_models)
