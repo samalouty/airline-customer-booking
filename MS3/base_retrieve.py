@@ -18,7 +18,10 @@ class Neo4jRetriever:
             "analyze_satisfaction",
             "search_network",
             "analyze_issues",
-            "lookup_details"
+            "lookup_details",
+            "analyze_passengers",
+            "analyze_journeys",
+            "compare_routes"
         ]
 
     # ==========================================
@@ -47,6 +50,15 @@ class Neo4jRetriever:
         if 'vip_id' in clean: clean['record_locator'] = clean.pop('vip_id')
         if 'loyalty_level' in clean: clean['loyalty_tier'] = clean.pop('loyalty_level')
         if 'passenger_class' in clean: clean['class'] = clean.pop('passenger_class')
+        
+        # --- Fix 3: Normalize loyalty tier format ---
+        if 'loyalty_tier' in clean:
+            tier = clean['loyalty_tier'].lower()
+            if 'premier gold' in tier or 'gold' in tier: clean['loyalty_tier'] = 'premier gold'
+            elif 'premier silver' in tier or 'silver' in tier: clean['loyalty_tier'] = 'premier silver'
+            elif 'premier platinum' in tier or 'platinum' in tier: clean['loyalty_tier'] = 'premier platinum'
+            elif 'premier 1k' in tier or '1k' in tier: clean['loyalty_tier'] = 'premier 1k'
+            elif 'non-elite' in tier or 'non elite' in tier: clean['loyalty_tier'] = 'non-elite'
 
         return clean
 
@@ -60,11 +72,43 @@ class Neo4jRetriever:
         
         # 1. INTENT: search_network
         if intent == "search_network":
+            # Route search with delay filters
+            if 'origin' in entities and 'dest' in entities and 'min_delay' in entities:
+                return """
+                    MATCH (o:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
+                    MATCH (j:Journey)-[:ON]->(f)
+                    WHERE j.arrival_delay_minutes >= $min_delay
+                    RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                """
+            if 'origin' in entities and 'dest' in entities and 'max_delay' in entities:
+                return """
+                    MATCH (o:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
+                    MATCH (j:Journey)-[:ON]->(f)
+                    WHERE j.arrival_delay_minutes <= $max_delay
+                    RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
+                    ORDER BY j.arrival_delay_minutes LIMIT 20
+                """
+            # Route search with mileage range
+            if 'origin' in entities and 'dest' in entities and 'min_miles' in entities and 'max_miles' in entities:
+                return """
+                    MATCH (origin:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(dest:Airport {station_code: $dest})
+                    MATCH (j:Journey)-[:ON]->(f)
+                    WHERE j.actual_flown_miles >= $min_miles AND j.actual_flown_miles <= $max_miles
+                    RETURN DISTINCT f.flight_number, f.fleet_type_description, j.actual_flown_miles
+                """
             if 'origin' in entities and 'dest' in entities and 'min_miles' in entities:
                 return """
                     MATCH (origin:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(dest:Airport {station_code: $dest})
                     MATCH (j:Journey)-[:ON]->(f)
                     WHERE j.actual_flown_miles > $min_miles
+                    RETURN DISTINCT f.flight_number, f.fleet_type_description, j.actual_flown_miles
+                """
+            if 'origin' in entities and 'dest' in entities and 'max_miles' in entities:
+                return """
+                    MATCH (origin:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(dest:Airport {station_code: $dest})
+                    MATCH (j:Journey)-[:ON]->(f)
+                    WHERE j.actual_flown_miles < $max_miles
                     RETURN DISTINCT f.flight_number, f.fleet_type_description, j.actual_flown_miles
                 """
             if 'origin' in entities and 'dest' in entities:
@@ -81,6 +125,14 @@ class Neo4jRetriever:
 
         # 2. INTENT: analyze_satisfaction
         if intent == "analyze_satisfaction":
+            # Satisfaction with food score range
+            if 'loyalty_tier' in entities and 'class' in entities and 'min_food_satisfaction' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE p.loyalty_program_level = $loyalty_tier AND j.passenger_class = $class
+                      AND j.food_satisfaction_score >= $min_food_satisfaction
+                    RETURN avg(j.food_satisfaction_score) AS average_rating, count(j) AS total_trips
+                """
             if 'loyalty_tier' in entities and 'class' in entities:
                 return """
                     MATCH (p:Passenger)-[:TOOK]->(j:Journey)
@@ -95,20 +147,99 @@ class Neo4jRetriever:
                       AND f.fleet_type_description CONTAINS $fleet_type
                     RETURN p.generation, f.fleet_type_description, avg(j.food_satisfaction_score) AS average_food_rating
                 """
+            if 'generation' in entities and 'min_food_satisfaction' in entities and 'max_food_satisfaction' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE p.generation = $generation
+                      AND j.food_satisfaction_score >= $min_food_satisfaction
+                      AND j.food_satisfaction_score <= $max_food_satisfaction
+                    RETURN p.generation AS generation, j.food_satisfaction_score, count(j) AS count
+                    ORDER BY j.food_satisfaction_score
+                """
             if 'generation' in entities:
                 return """
                     MATCH (p:Passenger)-[:TOOK]->(j:Journey)
                     WHERE p.generation = $generation
                     RETURN p.generation AS generation, avg(j.food_satisfaction_score) AS average_food_rating
                 """
+            if 'min_food_satisfaction' in entities and 'max_food_satisfaction' in entities:
+                return """
+                    MATCH (j:Journey)
+                    WHERE j.food_satisfaction_score >= $min_food_satisfaction 
+                      AND j.food_satisfaction_score <= $max_food_satisfaction
+                    RETURN j.food_satisfaction_score AS score, count(j) AS journey_count
+                    ORDER BY score
+                """
+            if 'max_food_satisfaction' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.food_satisfaction_score <= $max_food_satisfaction
+                    RETURN f.flight_number, j.food_satisfaction_score, p.generation, j.feedback_ID
+                    ORDER BY j.food_satisfaction_score LIMIT 20
+                """
             return "MATCH (j:Journey) RETURN avg(j.food_satisfaction_score) as global_avg"
 
         # 3. INTENT: analyze_delays
         if intent == "analyze_delays":
+            # Delays for specific route with delay range
+            if 'origin' in entities and 'dest' in entities and 'min_delay' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport {station_code: $origin})
+                    MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
+                    WHERE j.arrival_delay_minutes >= $min_delay
+                    RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                """
+            if 'origin' in entities and 'dest' in entities and 'max_delay' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport {station_code: $origin})
+                    MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
+                    WHERE j.arrival_delay_minutes <= $max_delay
+                    RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
+                    ORDER BY j.arrival_delay_minutes LIMIT 20
+                """
+            if 'origin' in entities and 'dest' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport {station_code: $origin})
+                    MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
+                    RETURN f.flight_number, min(j.arrival_delay_minutes) AS min_delay, 
+                           max(j.arrival_delay_minutes) AS max_delay, avg(j.arrival_delay_minutes) AS avg_delay
+                """
+            # Delays with min_delay and max_delay range
+            if 'min_delay' in entities and 'max_delay' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.arrival_delay_minutes >= $min_delay AND j.arrival_delay_minutes <= $max_delay
+                    RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                """
+            if 'min_delay' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.arrival_delay_minutes >= $min_delay
+                    RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                """
+            if 'max_delay' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.arrival_delay_minutes <= $max_delay
+                    RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
+                    ORDER BY j.arrival_delay_minutes LIMIT 20
+                """
             if 'origin' in entities:
                 return """
                     MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(a:Airport {station_code: $origin})
                     RETURN a.station_code AS airport, min(j.arrival_delay_minutes) AS min_delay, max(j.arrival_delay_minutes) AS max_delay, avg(j.arrival_delay_minutes) AS avg_delay
+                """
+            if 'fleet_type' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)
+                    WHERE f.fleet_type_description CONTAINS $fleet_type
+                    RETURN f.fleet_type_description AS aircraft_type, 
+                           min(j.arrival_delay_minutes) AS min_delay,
+                           max(j.arrival_delay_minutes) AS max_delay,
+                           avg(j.arrival_delay_minutes) AS average_delay
                 """
             return """
                 MATCH (j:Journey)-[:ON]->(f:Flight)
@@ -118,12 +249,44 @@ class Neo4jRetriever:
 
         # 4. INTENT: analyze_issues
         if intent == "analyze_issues":
+            # Issues with delay and satisfaction constraints
+            if 'min_delay' in entities and 'max_food_satisfaction' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.arrival_delay_minutes >= $min_delay AND j.food_satisfaction_score <= $max_food_satisfaction
+                    RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.feedback_ID
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                """
             if 'min_delay' in entities and 'max_score' in entities:
                 return """
                     MATCH (j:Journey)-[:ON]->(f:Flight)
                     WHERE j.arrival_delay_minutes > $min_delay AND j.food_satisfaction_score <= $max_score
                     RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.feedback_ID
                     LIMIT 20
+                """
+            # Issues for specific route
+            if 'origin' in entities and 'dest' in entities and 'min_delay' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport {station_code: $origin})
+                    MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
+                    WHERE j.arrival_delay_minutes >= $min_delay
+                    RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.feedback_ID, j.passenger_class
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                """
+            # Issues with multi-leg journeys
+            if 'min_legs' in entities and 'min_delay' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.number_of_legs >= $min_legs AND j.arrival_delay_minutes >= $min_delay
+                    RETURN p.record_locator, f.flight_number, j.number_of_legs, j.arrival_delay_minutes, j.feedback_ID
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                """
+            if 'max_food_satisfaction' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.food_satisfaction_score <= $max_food_satisfaction
+                    RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.feedback_ID
+                    ORDER BY j.food_satisfaction_score LIMIT 20
                 """
 
         # 5. INTENT: lookup_details
@@ -151,6 +314,158 @@ class Neo4jRetriever:
                         flight_number: f.flight_number
                     } AS feedback_details
                 """
+
+        # 6. INTENT: analyze_passengers
+        if intent == "analyze_passengers":
+            # Passengers by loyalty tier with journey stats
+            if 'loyalty_tier' in entities and 'min_miles' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE p.loyalty_program_level = $loyalty_tier AND j.actual_flown_miles >= $min_miles
+                    RETURN p.record_locator, p.loyalty_program_level, p.generation,
+                           count(j) AS total_journeys, sum(j.actual_flown_miles) AS total_miles
+                    ORDER BY total_miles DESC LIMIT 20
+                """
+            if 'loyalty_tier' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE p.loyalty_program_level = $loyalty_tier
+                    RETURN p.record_locator, p.generation, count(j) AS journey_count,
+                           avg(j.food_satisfaction_score) AS avg_satisfaction
+                    ORDER BY journey_count DESC LIMIT 20
+                """
+            if 'generation' in entities and 'loyalty_tier' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE p.generation = $generation AND p.loyalty_program_level = $loyalty_tier
+                    RETURN p.record_locator, count(j) AS journey_count, 
+                           sum(j.actual_flown_miles) AS total_miles,
+                           avg(j.food_satisfaction_score) AS avg_satisfaction
+                    ORDER BY total_miles DESC LIMIT 20
+                """
+            if 'generation' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE p.generation = $generation
+                    RETURN p.loyalty_program_level AS loyalty_tier, count(DISTINCT p) AS passenger_count,
+                           avg(j.food_satisfaction_score) AS avg_satisfaction
+                    ORDER BY passenger_count DESC
+                """
+            # Passengers with frequent delays
+            if 'min_delay' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE j.arrival_delay_minutes >= $min_delay
+                    RETURN p.record_locator, p.generation, p.loyalty_program_level,
+                           count(j) AS delayed_journeys, avg(j.arrival_delay_minutes) AS avg_delay
+                    ORDER BY delayed_journeys DESC LIMIT 20
+                """
+            # Default: passenger distribution by generation
+            return """
+                MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                RETURN p.generation AS generation, p.loyalty_program_level AS loyalty_tier,
+                       count(DISTINCT p) AS passenger_count
+                ORDER BY passenger_count DESC
+            """
+
+        # 7. INTENT: analyze_journeys
+        if intent == "analyze_journeys":
+            # Journeys with leg constraints
+            if 'min_legs' in entities and 'max_legs' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.number_of_legs >= $min_legs AND j.number_of_legs <= $max_legs
+                    RETURN j.feedback_ID, j.number_of_legs, j.actual_flown_miles, 
+                           j.arrival_delay_minutes, j.food_satisfaction_score,
+                           p.record_locator, f.flight_number
+                    ORDER BY j.number_of_legs DESC LIMIT 20
+                """
+            if 'min_legs' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.number_of_legs >= $min_legs
+                    RETURN j.feedback_ID, j.number_of_legs, j.actual_flown_miles,
+                           j.arrival_delay_minutes, j.food_satisfaction_score,
+                           p.record_locator, f.flight_number
+                    ORDER BY j.number_of_legs DESC LIMIT 20
+                """
+            if 'max_legs' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.number_of_legs <= $max_legs
+                    RETURN j.feedback_ID, j.number_of_legs, j.actual_flown_miles,
+                           j.arrival_delay_minutes, j.food_satisfaction_score,
+                           p.record_locator, f.flight_number
+                    ORDER BY j.number_of_legs LIMIT 20
+                """
+            # Journeys with mileage range
+            if 'min_miles' in entities and 'max_miles' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.actual_flown_miles >= $min_miles AND j.actual_flown_miles <= $max_miles
+                    RETURN j.feedback_ID, j.actual_flown_miles, j.number_of_legs,
+                           j.food_satisfaction_score, f.fleet_type_description
+                    ORDER BY j.actual_flown_miles DESC LIMIT 20
+                """
+            if 'min_miles' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.actual_flown_miles >= $min_miles
+                    RETURN j.feedback_ID, j.actual_flown_miles, j.number_of_legs,
+                           j.food_satisfaction_score, p.generation, f.fleet_type_description
+                    ORDER BY j.actual_flown_miles DESC LIMIT 20
+                """
+            if 'max_miles' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
+                    WHERE j.actual_flown_miles <= $max_miles
+                    RETURN j.feedback_ID, j.actual_flown_miles, j.number_of_legs,
+                           j.food_satisfaction_score, p.generation, f.fleet_type_description
+                    ORDER BY j.actual_flown_miles LIMIT 20
+                """
+            # Journeys by class with satisfaction
+            if 'class' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE j.passenger_class = $class
+                    RETURN j.passenger_class, count(j) AS journey_count,
+                           avg(j.food_satisfaction_score) AS avg_food_score,
+                           avg(j.arrival_delay_minutes) AS avg_delay
+                """
+            # Default: journey statistics by class
+            return """
+                MATCH (j:Journey)
+                RETURN j.passenger_class AS class, count(j) AS journey_count,
+                       avg(j.food_satisfaction_score) AS avg_satisfaction,
+                       avg(j.arrival_delay_minutes) AS avg_delay,
+                       avg(j.actual_flown_miles) AS avg_miles
+                ORDER BY journey_count DESC
+            """
+
+        # 8. INTENT: compare_routes
+        if intent == "compare_routes":
+            if 'origin' in entities and 'dest' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport {station_code: $origin})
+                    MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
+                    RETURN f.fleet_type_description AS aircraft,
+                           count(j) AS flight_count,
+                           avg(j.arrival_delay_minutes) AS avg_delay,
+                           avg(j.food_satisfaction_score) AS avg_food_score,
+                           avg(j.actual_flown_miles) AS avg_miles
+                    ORDER BY flight_count DESC
+                """
+            if 'origin' in entities:
+                return """
+                    MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport {station_code: $origin})
+                    MATCH (f)-[:ARRIVES_AT]->(d:Airport)
+                    RETURN d.station_code AS destination,
+                           count(j) AS flight_count,
+                           avg(j.arrival_delay_minutes) AS avg_delay,
+                           avg(j.food_satisfaction_score) AS avg_food_score
+                    ORDER BY flight_count DESC LIMIT 10
+                """
+            return None
 
         return None
 
