@@ -130,12 +130,14 @@ class QueryPreprocessor:
         Intent descriptions:
         - analyze_delays: Questions about flight delays, delay statistics, punctuality
         - analyze_satisfaction: Questions about food satisfaction scores, service ratings
-        - search_network: Searching for flights, routes between airports, network queries
+        - search_network: Searching for flights, routes between airports, flights by mileage/distance
         - analyze_issues: Finding problematic flights with delays AND poor ratings combined
         - lookup_details: Looking up specific passenger record or feedback by ID
-        - analyze_passengers: Questions about passenger demographics, loyalty tiers, passenger statistics
+        - analyze_passengers: Questions about passenger demographics, passenger statistics by generation
         - analyze_journeys: Questions about journey characteristics like legs, mileage, class statistics
         - compare_routes: Comparing performance metrics across different routes
+        - analyze_loyalty: Questions about loyalty program levels, most common loyalty tier, loyalty distribution
+        - analyze_experience: Questions about average experience, aggregate statistics for a group (e.g., "average experience for premier gold members")
         
         Return ONLY the intent key. Default to "unknown".
         """
@@ -156,13 +158,16 @@ class QueryPreprocessor:
         
         REFERENCE VALUES for semantic inference:
         
-        DELAY THRESHOLDS (in minutes):
+        DELAY THRESHOLDS (in minutes - ALWAYS convert hours to minutes: 1 hour = 60 minutes):
         - "early" or "ahead of schedule": max_delay = 0
         - "on time" or "punctual": min_delay = -15, max_delay = 15  
         - "slight delay": min_delay = 1, max_delay = 15
         - "moderate delay": min_delay = 16, max_delay = 60
         - "severe delay" or "significant delay": min_delay = 61
         - "extreme delay" or "major delay": min_delay = 120
+        - "1 hour" or "an hour": min_delay = 60
+        - "2 hours": min_delay = 120
+        - "more than X hours": min_delay = X * 60
         
         FOOD SATISFACTION THRESHOLDS (scores 1-5):
         - "poor", "bad", "low", "terrible": max_food_satisfaction = 2
@@ -306,7 +311,19 @@ class QueryPreprocessor:
         delay_greater_alt = re.search(r'(?:over|above|more than|greater than|exceeding|at least)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
         delay_range = re.search(r'(\d+)\s*(?:to|-)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
         
-        if delay_range:
+        # Hour conversion patterns
+        hour_pattern = re.search(r'(?:more than|over|above|at least|exceeding)\s*(\d+)\s*hours?', user_input, re.IGNORECASE)
+        hour_pattern_alt = re.search(r'(\d+)\s*hours?\s*(?:delay|late|delayed)', user_input, re.IGNORECASE)
+        # Handle "an hour" or "a hour" as 1 hour
+        an_hour_pattern = re.search(r'(?:more than|over|above|at least|exceeding)?\s*(?:an?|one)\s*hours?', user_input, re.IGNORECASE)
+        
+        if an_hour_pattern:
+            parameters["min_delay"] = 60
+        elif hour_pattern:
+            parameters["min_delay"] = int(hour_pattern.group(1)) * 60
+        elif hour_pattern_alt:
+            parameters["min_delay"] = int(hour_pattern_alt.group(1)) * 60
+        elif delay_range:
             parameters["min_delay"] = int(delay_range.group(1))
             parameters["max_delay"] = int(delay_range.group(2))
         elif delay_greater:
@@ -350,14 +367,14 @@ class QueryPreprocessor:
         parameters = {}
         input_lower = user_input.lower()
         
-        # Delay inference
-        if any(word in input_lower for word in ['severe delay', 'severely delayed', 'major delay', 'significant delay']):
+        # Delay inference - check for various patterns including typos
+        if any(word in input_lower for word in ['severe', 'severely', 'severly', 'major delay', 'significant', 'big delay', 'huge delay']):
             parameters["min_delay"] = SEMANTIC_THRESHOLDS["delay"]["severe"]["min_delay"]
-        elif any(word in input_lower for word in ['extreme delay', 'very delayed', 'massive delay']):
+        elif any(word in input_lower for word in ['extreme', 'very delayed', 'massive', 'extremely']):
             parameters["min_delay"] = SEMANTIC_THRESHOLDS["delay"]["extreme"]["min_delay"]
-        elif any(word in input_lower for word in ['moderate delay', 'moderately delayed']):
+        elif any(word in input_lower for word in ['moderate', 'moderately']):
             parameters.update(SEMANTIC_THRESHOLDS["delay"]["moderate"])
-        elif any(word in input_lower for word in ['slight delay', 'minor delay', 'small delay']):
+        elif any(word in input_lower for word in ['slight', 'minor', 'small delay', 'little delay']):
             parameters.update(SEMANTIC_THRESHOLDS["delay"]["slight"])
         elif any(word in input_lower for word in ['on time', 'punctual', 'no delay']):
             parameters.update(SEMANTIC_THRESHOLDS["delay"]["on_time"])
