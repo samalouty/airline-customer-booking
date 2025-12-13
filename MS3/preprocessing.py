@@ -31,6 +31,8 @@ SEMANTIC_THRESHOLDS = {
         "bad": {"max_food_satisfaction": 2},
         "low": {"max_food_satisfaction": 2},
         "mid": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
+        "average": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
+        "okay": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
         "good": {"min_food_satisfaction": 4},
         "excellent": {"min_food_satisfaction": 5},
         "high": {"min_food_satisfaction": 4}
@@ -312,7 +314,9 @@ class QueryPreprocessor:
         delay_greater = re.search(r'(?:delay|delayed|late).*?(?:over|above|more than|greater than|exceeding|at least)\s*(\d+)', user_input, re.IGNORECASE)
         delay_less = re.search(r'(?:delay|delayed|late).*?(?:under|below|less than|within|at most)\s*(\d+)', user_input, re.IGNORECASE)
         delay_greater_alt = re.search(r'(?:over|above|more than|greater than|exceeding|at least)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
-        delay_range = re.search(r'(\d+)\s*(?:to|-)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
+        delay_range = re.search(r'(\d+)\s*(?:min|minute)?s?\s*(?:to|and|-)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
+        # Alternative pattern: "between X and Y minutes"
+        delay_range_alt = re.search(r'between\s*(\d+)\s*(?:and|-)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
         
         # Hour conversion patterns
         hour_pattern = re.search(r'(?:more than|over|above|at least|exceeding)\s*(\d+)\s*hours?', user_input, re.IGNORECASE)
@@ -329,6 +333,9 @@ class QueryPreprocessor:
         elif delay_range:
             parameters["min_delay"] = int(delay_range.group(1))
             parameters["max_delay"] = int(delay_range.group(2))
+        elif delay_range_alt:
+            parameters["min_delay"] = int(delay_range_alt.group(1))
+            parameters["max_delay"] = int(delay_range_alt.group(2))
         elif delay_greater:
             parameters["min_delay"] = int(delay_greater.group(1))
         elif delay_greater_alt:
@@ -349,9 +356,13 @@ class QueryPreprocessor:
         legs_greater = re.search(r'(?:more than|at least|over|above|exceeding|minimum)\s*(\d+)\s*(?:leg|stop|connection)', user_input, re.IGNORECASE)
         legs_less = re.search(r'(?:less than|at most|under|below|within|maximum)\s*(\d+)\s*(?:leg|stop|connection)', user_input, re.IGNORECASE)
         legs_exact = re.search(r'(\d+)\s*(?:leg|stop|connection)', user_input, re.IGNORECASE)
+        # Pattern for "X or more legs"
+        legs_or_more = re.search(r'(\d+)\s*(?:or more|\+)\s*(?:leg|stop|connection)', user_input, re.IGNORECASE)
         
         if legs_greater:
             parameters["min_legs"] = int(legs_greater.group(1))
+        if legs_or_more:
+            parameters["min_legs"] = int(legs_or_more.group(1))
         if legs_less:
             parameters["max_legs"] = int(legs_less.group(1))
         elif legs_exact and 'min_legs' not in parameters and 'max_legs' not in parameters:
@@ -397,6 +408,9 @@ class QueryPreprocessor:
         # Distance inference
         if any(word in input_lower for word in ['short-haul', 'short haul', 'short flight', 'short distance']):
             parameters["max_miles"] = SEMANTIC_THRESHOLDS["distance"]["short"]["max_miles"]
+        elif any(word in input_lower for word in ['medium-haul', 'medium haul', 'medium flight', 'medium distance']):
+            parameters["min_miles"] = SEMANTIC_THRESHOLDS["distance"]["medium"]["min_miles"]
+            parameters["max_miles"] = SEMANTIC_THRESHOLDS["distance"]["medium"]["max_miles"]
         elif any(word in input_lower for word in ['long-haul', 'long haul', 'long flight', 'long distance']):
             parameters["min_miles"] = SEMANTIC_THRESHOLDS["distance"]["long"]["min_miles"]
         elif any(word in input_lower for word in ['medium-haul', 'medium haul', 'medium distance']):
