@@ -30,7 +30,8 @@ SEMANTIC_THRESHOLDS = {
         "poor": {"max_food_satisfaction": 2},
         "bad": {"max_food_satisfaction": 2},
         "low": {"max_food_satisfaction": 2},
-        "average": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
+        "mid": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
+        "okay": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
         "good": {"min_food_satisfaction": 4},
         "excellent": {"min_food_satisfaction": 5},
         "high": {"min_food_satisfaction": 4}
@@ -80,7 +81,10 @@ class QueryPreprocessor:
                 {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "premier"}, {"LOWER": "platinum"}]},
                 {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "premier"}, {"LOWER": "1k"}]},
                 {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "non-elite"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "non"}, {"LOWER": "-"}, {"LOWER": "elite"}]},
                 {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "non"}, {"LOWER": "elite"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"LOWER": "nonelite"}]},
+                {"label": "LOYALTY_TIER", "pattern": [{"TEXT": {"REGEX": "^[Nn]on-?[Ee]lite$"}}]},
 
                 # -- Generations --
                 {"label": "GENERATION", "pattern": [{"LOWER": "boomer"}]},
@@ -171,7 +175,7 @@ class QueryPreprocessor:
         
         FOOD SATISFACTION THRESHOLDS (scores 1-5):
         - "poor", "bad", "low", "terrible": max_food_satisfaction = 2
-        - "average", "okay", "mediocre": min_food_satisfaction = 3, max_food_satisfaction = 3
+        - "mid", "okay", "mediocre": min_food_satisfaction = 3, max_food_satisfaction = 3
         - "good", "high", "great": min_food_satisfaction = 4
         - "excellent", "outstanding": min_food_satisfaction = 5
         
@@ -292,9 +296,9 @@ class QueryPreprocessor:
         """
         parameters = {}
         
-        # Explicit mileage patterns
-        miles_greater = re.search(r'(?:longer|greater|more|over|above|exceeding|at least|minimum)\s*(?:than\s*)?(\d+)\s*(?:miles?)?', user_input, re.IGNORECASE)
-        miles_less = re.search(r'(?:shorter|less|under|below|within|at most|maximum)\s*(?:than\s*)?(\d+)\s*(?:miles?)?', user_input, re.IGNORECASE)
+        # Explicit mileage patterns - MUST have "miles" to avoid matching "minutes"
+        miles_greater = re.search(r'(?:longer|greater|more|over|above|exceeding|at least|minimum)\s*(?:than\s*)?(\d+)\s*miles?', user_input, re.IGNORECASE)
+        miles_less = re.search(r'(?:shorter|less|under|below|within|at most|maximum)\s*(?:than\s*)?(\d+)\s*miles?', user_input, re.IGNORECASE)
         miles_exact = re.search(r'(\d{3,5})\s*miles?', user_input, re.IGNORECASE)
         
         if miles_greater:
@@ -309,7 +313,9 @@ class QueryPreprocessor:
         delay_greater = re.search(r'(?:delay|delayed|late).*?(?:over|above|more than|greater than|exceeding|at least)\s*(\d+)', user_input, re.IGNORECASE)
         delay_less = re.search(r'(?:delay|delayed|late).*?(?:under|below|less than|within|at most)\s*(\d+)', user_input, re.IGNORECASE)
         delay_greater_alt = re.search(r'(?:over|above|more than|greater than|exceeding|at least)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
-        delay_range = re.search(r'(\d+)\s*(?:to|-)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
+        delay_range = re.search(r'(\d+)\s*(?:min|minute)?s?\s*(?:to|and|-)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
+        # Alternative pattern: "between X and Y minutes"
+        delay_range_alt = re.search(r'between\s*(\d+)\s*(?:and|-)\s*(\d+)\s*(?:min|minute)', user_input, re.IGNORECASE)
         
         # Hour conversion patterns
         hour_pattern = re.search(r'(?:more than|over|above|at least|exceeding)\s*(\d+)\s*hours?', user_input, re.IGNORECASE)
@@ -326,6 +332,9 @@ class QueryPreprocessor:
         elif delay_range:
             parameters["min_delay"] = int(delay_range.group(1))
             parameters["max_delay"] = int(delay_range.group(2))
+        elif delay_range_alt:
+            parameters["min_delay"] = int(delay_range_alt.group(1))
+            parameters["max_delay"] = int(delay_range_alt.group(2))
         elif delay_greater:
             parameters["min_delay"] = int(delay_greater.group(1))
         elif delay_greater_alt:
@@ -346,9 +355,13 @@ class QueryPreprocessor:
         legs_greater = re.search(r'(?:more than|at least|over|above|exceeding|minimum)\s*(\d+)\s*(?:leg|stop|connection)', user_input, re.IGNORECASE)
         legs_less = re.search(r'(?:less than|at most|under|below|within|maximum)\s*(\d+)\s*(?:leg|stop|connection)', user_input, re.IGNORECASE)
         legs_exact = re.search(r'(\d+)\s*(?:leg|stop|connection)', user_input, re.IGNORECASE)
+        # Pattern for "X or more legs"
+        legs_or_more = re.search(r'(\d+)\s*(?:or more|\+)\s*(?:leg|stop|connection)', user_input, re.IGNORECASE)
         
         if legs_greater:
             parameters["min_legs"] = int(legs_greater.group(1))
+        if legs_or_more:
+            parameters["min_legs"] = int(legs_or_more.group(1))
         if legs_less:
             parameters["max_legs"] = int(legs_less.group(1))
         elif legs_exact and 'min_legs' not in parameters and 'max_legs' not in parameters:
@@ -388,19 +401,22 @@ class QueryPreprocessor:
             parameters["min_food_satisfaction"] = SEMANTIC_THRESHOLDS["food_satisfaction"]["excellent"]["min_food_satisfaction"]
         elif any(word in input_lower for word in ['good rating', 'good food']):
             parameters["min_food_satisfaction"] = SEMANTIC_THRESHOLDS["food_satisfaction"]["good"]["min_food_satisfaction"]
-        elif any(word in input_lower for word in ['average rating', 'average food', 'okay food']):
-            parameters.update(SEMANTIC_THRESHOLDS["food_satisfaction"]["average"])
+        elif any(word in input_lower for word in ['okay food', 'mid food']):
+            parameters.update(SEMANTIC_THRESHOLDS["food_satisfaction"]["mid"])
         
         # Distance inference
         if any(word in input_lower for word in ['short-haul', 'short haul', 'short flight', 'short distance']):
             parameters["max_miles"] = SEMANTIC_THRESHOLDS["distance"]["short"]["max_miles"]
+        elif any(word in input_lower for word in ['medium-haul', 'medium haul', 'medium flight', 'medium distance']):
+            parameters["min_miles"] = SEMANTIC_THRESHOLDS["distance"]["medium"]["min_miles"]
+            parameters["max_miles"] = SEMANTIC_THRESHOLDS["distance"]["medium"]["max_miles"]
         elif any(word in input_lower for word in ['long-haul', 'long haul', 'long flight', 'long distance']):
             parameters["min_miles"] = SEMANTIC_THRESHOLDS["distance"]["long"]["min_miles"]
         elif any(word in input_lower for word in ['medium-haul', 'medium haul', 'medium distance']):
             parameters.update(SEMANTIC_THRESHOLDS["distance"]["medium"])
         
         # Legs inference
-        if any(word in input_lower for word in ['direct flight', 'nonstop', 'non-stop', 'single leg']):
+        if any(word in input_lower for word in ['direct flight', 'direct flights', 'nonstop', 'non-stop', 'non stop', 'single leg']):
             parameters["max_legs"] = SEMANTIC_THRESHOLDS["legs"]["direct"]["max_legs"]
         elif any(word in input_lower for word in ['connecting flight', 'multi-leg', 'multi leg', 'with connection', 'with stop']):
             parameters["min_legs"] = SEMANTIC_THRESHOLDS["legs"]["connecting"]["min_legs"]
