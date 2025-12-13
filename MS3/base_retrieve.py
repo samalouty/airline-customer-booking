@@ -122,6 +122,12 @@ class Neo4jRetriever:
                     RETURN o.station_code AS origin, d.station_code AS destination, count(f) AS flight_options_count
                     ORDER BY flight_options_count DESC LIMIT 10
                 """
+            if 'dest' in entities:
+                return """
+                    MATCH (o:Airport)<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
+                    RETURN o.station_code AS origin, d.station_code AS destination, count(f) AS flight_options_count
+                    ORDER BY flight_options_count DESC LIMIT 10
+                """
 
         # 2. INTENT: analyze_satisfaction
         if intent == "analyze_satisfaction":
@@ -162,6 +168,13 @@ class Neo4jRetriever:
                     WHERE p.generation = $generation
                     RETURN p.generation AS generation, avg(j.food_satisfaction_score) AS average_food_rating
                 """
+            if 'loyalty_tier' in entities: 
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE p.loyalty_program_level = $loyalty_tier
+                    RETURN p.loyalty_program_level AS loyalty_tier, avg(j.food_satisfaction_score) AS average_food_rating
+                """
+            
             if 'min_food_satisfaction' in entities and 'max_food_satisfaction' in entities:
                 return """
                     MATCH (j:Journey)
