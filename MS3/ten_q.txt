@@ -180,9 +180,6 @@ RETURN j.passenger_class, count(j) AS journey_count,
        avg(j.arrival_delay_minutes) AS avg_delay
 
 
-===========================================
-NEW QUESTIONS - DELAY PARAMETERS
-===========================================
 
 Q22. Find flights with severe delays from LAX to IAX.
 
@@ -227,10 +224,6 @@ RETURN f.fleet_type_description AS aircraft_type,
        avg(j.arrival_delay_minutes) AS average_delay
 
 
-===========================================
-NEW QUESTIONS - SATISFACTION PARAMETERS
-===========================================
-
 Q27. Show journeys with poor food satisfaction (score 2 or less).
 
 MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
@@ -239,17 +232,7 @@ RETURN f.flight_number, j.food_satisfaction_score, p.generation, j.feedback_ID
 ORDER BY j.food_satisfaction_score LIMIT 50
 
 
-Q28. Find Boomers who gave average food ratings (score of 3).
-
-MATCH (p:Passenger)-[:TOOK]->(j:Journey)
-WHERE p.generation = $generation
-  AND j.food_satisfaction_score >= $min_food_satisfaction
-  AND j.food_satisfaction_score <= $max_food_satisfaction
-RETURN p.generation AS generation, j.food_satisfaction_score, count(j) AS count
-ORDER BY j.food_satisfaction_score
-
-
-Q29. Show Premier Gold Economy passengers with good food ratings.
+Q28. Show Premier Gold Economy passengers with good food ratings.
 
 MATCH (p:Passenger)-[:TOOK]->(j:Journey)
 WHERE p.loyalty_program_level = $loyalty_tier AND j.passenger_class = $class
@@ -257,11 +240,7 @@ WHERE p.loyalty_program_level = $loyalty_tier AND j.passenger_class = $class
 RETURN avg(j.food_satisfaction_score) AS average_rating, count(j) AS total_trips
 
 
-===========================================
-NEW QUESTIONS - COMBINED ISSUES
-===========================================
-
-Q30. Find problematic journeys with severe delays and poor food.
+Q29. Find problematic journeys with severe delays and poor food.
 
 MATCH (j:Journey)-[:ON]->(f:Flight)
 WHERE j.arrival_delay_minutes >= $min_delay AND j.food_satisfaction_score <= $max_food_satisfaction
@@ -269,7 +248,7 @@ RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.fe
 ORDER BY j.arrival_delay_minutes DESC LIMIT 50
 
 
-Q31. Show issues on the LAX to EWX route with delays over 30 minutes.
+Q30. Show issues on the LAX to EWX route with delays over 30 minutes.
 
 MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport {station_code: $origin})
 MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
@@ -278,7 +257,7 @@ RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.fe
 ORDER BY j.arrival_delay_minutes DESC LIMIT 50
 
 
-Q32. Find multi-leg journeys with significant delays.
+Q31. Find multi-leg journeys with significant delays.
 
 MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
 WHERE j.number_of_legs >= $min_legs AND j.arrival_delay_minutes >= $min_delay
@@ -286,7 +265,7 @@ RETURN p.record_locator, f.flight_number, j.number_of_legs, j.arrival_delay_minu
 ORDER BY j.arrival_delay_minutes DESC LIMIT 50
 
 
-Q33. Show flights with terrible food ratings.
+Q32. Show flights with terrible food ratings.
 
 MATCH (j:Journey)-[:ON]->(f:Flight)
 WHERE j.food_satisfaction_score <= $max_food_satisfaction
@@ -294,11 +273,8 @@ RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.fe
 ORDER BY j.food_satisfaction_score LIMIT 50
 
 
-===========================================
-NEW QUESTIONS - ROUTE COMPARISON
-===========================================
 
-Q34. Compare performance metrics for the LAX to IAX route.
+Q33. Compare performance metrics for the LAX to IAX route.
 
 MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport {station_code: $origin})
 MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
@@ -310,7 +286,7 @@ RETURN f.fleet_type_description AS aircraft,
 ORDER BY flight_count DESC
 
 
-Q35. What routes from EWX have the best performance?
+Q34. What routes from EWX have the best performance?
 
 MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(o:Airport {station_code: $origin})
 MATCH (f)-[:ARRIVES_AT]->(d:Airport)
@@ -319,6 +295,16 @@ RETURN d.station_code AS destination,
        avg(j.arrival_delay_minutes) AS avg_delay,
        avg(j.food_satisfaction_score) AS avg_food_score
 ORDER BY flight_count DESC LIMIT 50
+
+Q35. Show me nonstop flight delays.
+
+MATCH (j:Journey)-[:ON]->(f:Flight)
+WHERE j.number_of_legs <= $max_legs
+RETURN avg(j.arrival_delay_minutes) AS avg_delay,
+       min(j.arrival_delay_minutes) AS min_delay,
+       max(j.arrival_delay_minutes) AS max_delay,
+       count(j) AS total_journeys,
+       'Direct Flights' AS flight_type
 
 
 Q36. Find flights from DEX to EWX between 1000 and 2000 miles.
@@ -345,10 +331,6 @@ RETURN j.feedback_ID, j.actual_flown_miles, j.number_of_legs,
        j.food_satisfaction_score, f.fleet_type_description
 ORDER BY j.actual_flown_miles DESC LIMIT 50
 
-
-===========================================
-NEW QUESTIONS - COMPLEX SEMANTIC QUERIES
-===========================================
 
 Q39. Find severely delayed long-haul flights with poor food service.
 
@@ -577,14 +559,3 @@ RETURN p.loyalty_program_level AS loyalty_tier,
        avg(j.arrival_delay_minutes) AS avg_delay,
        avg(j.actual_flown_miles) AS avg_miles,
        avg(j.number_of_legs) AS avg_legs
-
-
-Q60. Show me nonstop flight delays.
-
-MATCH (j:Journey)-[:ON]->(f:Flight)
-WHERE j.number_of_legs <= $max_legs
-RETURN avg(j.arrival_delay_minutes) AS avg_delay,
-       min(j.arrival_delay_minutes) AS min_delay,
-       max(j.arrival_delay_minutes) AS max_delay,
-       count(j) AS total_journeys,
-       'Direct Flights' AS flight_type

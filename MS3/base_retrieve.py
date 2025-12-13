@@ -81,7 +81,7 @@ class Neo4jRetriever:
                     MATCH (j:Journey)-[:ON]->(f)
                     WHERE j.arrival_delay_minutes >= $min_delay
                     RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
-                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 50
                 """
             if 'origin' in entities and 'dest' in entities and 'max_delay' in entities:
                 return """
@@ -89,7 +89,7 @@ class Neo4jRetriever:
                     MATCH (j:Journey)-[:ON]->(f)
                     WHERE j.arrival_delay_minutes <= $max_delay
                     RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
-                    ORDER BY j.arrival_delay_minutes LIMIT 20
+                    ORDER BY j.arrival_delay_minutes LIMIT 50
                 """
             # Route search with mileage range
             if 'origin' in entities and 'dest' in entities and 'min_miles' in entities and 'max_miles' in entities:
@@ -124,7 +124,7 @@ class Neo4jRetriever:
                     MATCH (j:Journey)-[:ON]->(f)
                     WHERE j.number_of_legs <= $max_legs
                     RETURN o.station_code AS origin, d.station_code AS destination, count(f) AS flight_options_count
-                    ORDER BY flight_options_count DESC LIMIT 10
+                    ORDER BY flight_options_count DESC LIMIT 50
                 """
             if 'origin' in entities and 'dest' in entities and 'max_legs' in entities:
                 return """
@@ -132,7 +132,7 @@ class Neo4jRetriever:
                     MATCH (j:Journey)-[:ON]->(f)
                     WHERE j.number_of_legs <= $max_legs
                     RETURN o.station_code AS origin, d.station_code AS destination, count(f) AS flight_options_count
-                    ORDER BY flight_options_count DESC LIMIT 10
+                    ORDER BY flight_options_count DESC LIMIT 50
                 """
             # Origin with max_miles filter (short flights from origin)
             if 'origin' in entities and 'max_miles' in entities:
@@ -142,7 +142,7 @@ class Neo4jRetriever:
                     WHERE j.actual_flown_miles <= $max_miles
                     RETURN o.station_code AS origin, d.station_code AS destination, 
                            f.flight_number, j.actual_flown_miles
-                    ORDER BY j.actual_flown_miles LIMIT 20
+                    ORDER BY j.actual_flown_miles LIMIT 50
                 """
             # Origin with min_miles filter (long flights from origin)
             if 'origin' in entities and 'min_miles' in entities:
@@ -152,19 +152,19 @@ class Neo4jRetriever:
                     WHERE j.actual_flown_miles >= $min_miles
                     RETURN o.station_code AS origin, d.station_code AS destination, 
                            f.flight_number, j.actual_flown_miles
-                    ORDER BY j.actual_flown_miles DESC LIMIT 20
+                    ORDER BY j.actual_flown_miles DESC LIMIT 50
                 """
             if 'origin' in entities:
                 return """
                     MATCH (o:Airport {station_code: $origin})<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport)
                     RETURN o.station_code AS origin, d.station_code AS destination, count(f) AS flight_options_count
-                    ORDER BY flight_options_count DESC LIMIT 10
+                    ORDER BY flight_options_count DESC LIMIT 50
                 """
             if 'dest' in entities:
                 return """
                     MATCH (o:Airport)<-[:DEPARTS_FROM]-(f:Flight)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
                     RETURN o.station_code AS origin, d.station_code AS destination, count(f) AS flight_options_count
-                    ORDER BY flight_options_count DESC LIMIT 10
+                    ORDER BY flight_options_count DESC LIMIT 50
                 """
             # Search by mileage only (no specific route)
             if 'min_miles' in entities and 'max_miles' in entities:
@@ -174,7 +174,7 @@ class Neo4jRetriever:
                     WHERE j.actual_flown_miles >= $min_miles AND j.actual_flown_miles <= $max_miles
                     RETURN DISTINCT o.station_code AS origin, d.station_code AS destination,
                            f.flight_number, f.fleet_type_description, j.actual_flown_miles
-                    ORDER BY j.actual_flown_miles DESC LIMIT 20
+                    ORDER BY j.actual_flown_miles DESC LIMIT 50
                 """
             if 'min_miles' in entities:
                 return """
@@ -183,7 +183,7 @@ class Neo4jRetriever:
                     WHERE j.actual_flown_miles >= $min_miles
                     RETURN DISTINCT o.station_code AS origin, d.station_code AS destination,
                            f.flight_number, f.fleet_type_description, j.actual_flown_miles
-                    ORDER BY j.actual_flown_miles DESC LIMIT 20
+                    ORDER BY j.actual_flown_miles DESC LIMIT 50
                 """
             if 'max_miles' in entities:
                 return """
@@ -192,7 +192,7 @@ class Neo4jRetriever:
                     WHERE j.actual_flown_miles <= $max_miles
                     RETURN DISTINCT o.station_code AS origin, d.station_code AS destination,
                            f.flight_number, f.fleet_type_description, j.actual_flown_miles
-                    ORDER BY j.actual_flown_miles LIMIT 20
+                    ORDER BY j.actual_flown_miles LIMIT 50
                 """
 
         # 2. INTENT: analyze_satisfaction
@@ -254,7 +254,7 @@ class Neo4jRetriever:
                     MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
                     WHERE j.food_satisfaction_score <= $max_food_satisfaction
                     RETURN f.flight_number, j.food_satisfaction_score, p.generation, j.feedback_ID
-                    ORDER BY j.food_satisfaction_score LIMIT 20
+                    ORDER BY j.food_satisfaction_score LIMIT 50
                 """
             # Fleet type satisfaction
             if 'fleet_type' in entities:
@@ -278,7 +278,7 @@ class Neo4jRetriever:
                     MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
                     WHERE j.arrival_delay_minutes >= $min_delay
                     RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
-                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 50
                 """
             if 'origin' in entities and 'dest' in entities and 'max_delay' in entities:
                 return """
@@ -286,7 +286,7 @@ class Neo4jRetriever:
                     MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
                     WHERE j.arrival_delay_minutes <= $max_delay
                     RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
-                    ORDER BY j.arrival_delay_minutes LIMIT 20
+                    ORDER BY j.arrival_delay_minutes LIMIT 50
                 """
             if 'origin' in entities and 'dest' in entities:
                 return """
@@ -301,21 +301,21 @@ class Neo4jRetriever:
                     MATCH (j:Journey)-[:ON]->(f:Flight)
                     WHERE j.arrival_delay_minutes >= $min_delay AND j.arrival_delay_minutes <= $max_delay
                     RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
-                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 50
                 """
             if 'min_delay' in entities:
                 return """
                     MATCH (j:Journey)-[:ON]->(f:Flight)
                     WHERE j.arrival_delay_minutes >= $min_delay
                     RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
-                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 50
                 """
             if 'max_delay' in entities:
                 return """
                     MATCH (j:Journey)-[:ON]->(f:Flight)
                     WHERE j.arrival_delay_minutes <= $max_delay
                     RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID
-                    ORDER BY j.arrival_delay_minutes LIMIT 20
+                    ORDER BY j.arrival_delay_minutes LIMIT 50
                 """
             # Origin with delay filter
             if 'origin' in entities and 'min_delay' in entities:
@@ -323,14 +323,14 @@ class Neo4jRetriever:
                     MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(a:Airport {station_code: $origin})
                     WHERE j.arrival_delay_minutes >= $min_delay
                     RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID, a.station_code AS origin
-                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 50
                 """
             if 'origin' in entities and 'max_delay' in entities:
                 return """
                     MATCH (j:Journey)-[:ON]->(f:Flight)-[:DEPARTS_FROM]->(a:Airport {station_code: $origin})
                     WHERE j.arrival_delay_minutes <= $max_delay
                     RETURN f.flight_number, f.fleet_type_description, j.arrival_delay_minutes, j.feedback_ID, a.station_code AS origin
-                    ORDER BY j.arrival_delay_minutes LIMIT 20
+                    ORDER BY j.arrival_delay_minutes LIMIT 50
                 """
             if 'origin' in entities:
                 return """
@@ -360,7 +360,7 @@ class Neo4jRetriever:
             return """
                 MATCH (j:Journey)-[:ON]->(f:Flight)
                 RETURN f.fleet_type_description AS aircraft_type, avg(j.arrival_delay_minutes) AS average_delay
-                ORDER BY average_delay DESC LIMIT 5
+                ORDER BY average_delay DESC LIMIT 50
             """
 
         # 4. INTENT: analyze_issues
@@ -371,14 +371,14 @@ class Neo4jRetriever:
                     MATCH (j:Journey)-[:ON]->(f:Flight)
                     WHERE j.arrival_delay_minutes >= $min_delay AND j.food_satisfaction_score <= $max_food_satisfaction
                     RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.feedback_ID
-                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 50
                 """
             if 'min_delay' in entities and 'max_score' in entities:
                 return """
                     MATCH (j:Journey)-[:ON]->(f:Flight)
                     WHERE j.arrival_delay_minutes > $min_delay AND j.food_satisfaction_score <= $max_score
                     RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.feedback_ID
-                    LIMIT 20
+                    LIMIT 50
                 """
             # Issues for specific route
             if 'origin' in entities and 'dest' in entities and 'min_delay' in entities:
@@ -387,7 +387,7 @@ class Neo4jRetriever:
                     MATCH (f)-[:ARRIVES_AT]->(d:Airport {station_code: $dest})
                     WHERE j.arrival_delay_minutes >= $min_delay
                     RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.feedback_ID, j.passenger_class
-                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 50
                 """
             # Issues with multi-leg journeys
             if 'min_legs' in entities and 'min_delay' in entities:
@@ -395,14 +395,14 @@ class Neo4jRetriever:
                     MATCH (p:Passenger)-[:TOOK]->(j:Journey)-[:ON]->(f:Flight)
                     WHERE j.number_of_legs >= $min_legs AND j.arrival_delay_minutes >= $min_delay
                     RETURN p.record_locator, f.flight_number, j.number_of_legs, j.arrival_delay_minutes, j.feedback_ID
-                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 50
                 """
             if 'max_food_satisfaction' in entities:
                 return """
                     MATCH (j:Journey)-[:ON]->(f:Flight)
                     WHERE j.food_satisfaction_score <= $max_food_satisfaction
                     RETURN f.flight_number, j.arrival_delay_minutes, j.food_satisfaction_score, j.feedback_ID
-                    ORDER BY j.food_satisfaction_score LIMIT 20
+                    ORDER BY j.food_satisfaction_score LIMIT 50
                 """
 
         # 5. INTENT: lookup_details
@@ -453,7 +453,7 @@ class Neo4jRetriever:
                     RETURN p.record_locator, p.loyalty_program_level,
                            j.arrival_delay_minutes, j.number_of_legs,
                            j.food_satisfaction_score
-                    ORDER BY j.arrival_delay_minutes DESC LIMIT 20
+                    ORDER BY j.arrival_delay_minutes DESC LIMIT 50
                 """
             # Passengers by generation with delay filter
             if 'generation' in entities and 'min_delay' in entities:
@@ -462,7 +462,7 @@ class Neo4jRetriever:
                     WHERE p.generation = $generation AND j.arrival_delay_minutes >= $min_delay
                     RETURN p.record_locator, p.loyalty_program_level,
                            count(j) AS delayed_journeys, avg(j.arrival_delay_minutes) AS avg_delay
-                    ORDER BY delayed_journeys DESC LIMIT 20
+                    ORDER BY delayed_journeys DESC LIMIT 50
                 """
             # Passengers by class
             if 'class' in entities:
@@ -482,7 +482,7 @@ class Neo4jRetriever:
                     WHERE p.loyalty_program_level = $loyalty_tier AND j.actual_flown_miles >= $min_miles
                     RETURN p.record_locator, p.loyalty_program_level, p.generation,
                            count(j) AS total_journeys, sum(j.actual_flown_miles) AS total_miles
-                    ORDER BY total_miles DESC LIMIT 20
+                    ORDER BY total_miles DESC LIMIT 50
                 """
             if 'loyalty_tier' in entities:
                 return """
@@ -490,7 +490,7 @@ class Neo4jRetriever:
                     WHERE p.loyalty_program_level = $loyalty_tier
                     RETURN p.record_locator, p.generation, count(j) AS journey_count,
                            avg(j.food_satisfaction_score) AS avg_satisfaction
-                    ORDER BY journey_count DESC LIMIT 20
+                    ORDER BY journey_count DESC LIMIT 50
                 """
             if 'generation' in entities and 'loyalty_tier' in entities:
                 return """
@@ -499,7 +499,16 @@ class Neo4jRetriever:
                     RETURN p.record_locator, count(j) AS journey_count, 
                            sum(j.actual_flown_miles) AS total_miles,
                            avg(j.food_satisfaction_score) AS avg_satisfaction
-                    ORDER BY total_miles DESC LIMIT 20
+                    ORDER BY total_miles DESC LIMIT 50
+                """
+            
+            if 'generation' in entities and 'min_miles' in entities:
+                return """
+                    MATCH (p:Passenger)-[:TOOK]->(j:Journey)
+                    WHERE p.generation = $generation AND j.actual_flown_miles >= $min_miles
+                    RETURN p.record_locator, p.loyalty_program_level,
+                           count(j) AS total_journeys, sum(j.actual_flown_miles) AS total_miles
+                    ORDER BY total_miles DESC LIMIT 50
                 """
             if 'generation' in entities:
                 return """
@@ -516,7 +525,7 @@ class Neo4jRetriever:
                     WHERE j.arrival_delay_minutes >= $min_delay
                     RETURN p.record_locator, p.generation, p.loyalty_program_level,
                            count(j) AS delayed_journeys, avg(j.arrival_delay_minutes) AS avg_delay
-                    ORDER BY delayed_journeys DESC LIMIT 20
+                    ORDER BY delayed_journeys DESC LIMIT 50
                 """
             # Default: passenger distribution by generation
             return """
@@ -661,7 +670,7 @@ class Neo4jRetriever:
                     RETURN j.feedback_ID, j.number_of_legs, j.actual_flown_miles, 
                            j.arrival_delay_minutes, j.food_satisfaction_score,
                            p.record_locator, f.flight_number
-                    ORDER BY j.number_of_legs DESC LIMIT 20
+                    ORDER BY j.number_of_legs DESC LIMIT 50
                 """
             if 'min_legs' in entities:
                 return """
@@ -670,7 +679,7 @@ class Neo4jRetriever:
                     RETURN j.feedback_ID, j.number_of_legs, j.actual_flown_miles,
                            j.arrival_delay_minutes, j.food_satisfaction_score,
                            p.record_locator, f.flight_number
-                    ORDER BY j.number_of_legs DESC LIMIT 20
+                    ORDER BY j.number_of_legs DESC LIMIT 50
                 """
             if 'max_legs' in entities:
                 return """
@@ -679,7 +688,7 @@ class Neo4jRetriever:
                     RETURN j.feedback_ID, j.number_of_legs, j.actual_flown_miles,
                            j.arrival_delay_minutes, j.food_satisfaction_score,
                            p.record_locator, f.flight_number
-                    ORDER BY j.number_of_legs LIMIT 20
+                    ORDER BY j.number_of_legs LIMIT 50
                 """
             # Journeys with mileage range
             if 'min_miles' in entities and 'max_miles' in entities:
@@ -688,7 +697,7 @@ class Neo4jRetriever:
                     WHERE j.actual_flown_miles >= $min_miles AND j.actual_flown_miles <= $max_miles
                     RETURN j.feedback_ID, j.actual_flown_miles, j.number_of_legs,
                            j.food_satisfaction_score, f.fleet_type_description
-                    ORDER BY j.actual_flown_miles DESC LIMIT 20
+                    ORDER BY j.actual_flown_miles DESC LIMIT 50
                 """
             if 'min_miles' in entities:
                 return """
@@ -696,7 +705,7 @@ class Neo4jRetriever:
                     WHERE j.actual_flown_miles >= $min_miles
                     RETURN j.feedback_ID, j.actual_flown_miles, j.number_of_legs,
                            j.food_satisfaction_score, p.generation, f.fleet_type_description
-                    ORDER BY j.actual_flown_miles DESC LIMIT 20
+                    ORDER BY j.actual_flown_miles DESC LIMIT 50
                 """
             if 'max_miles' in entities:
                 return """
@@ -704,7 +713,7 @@ class Neo4jRetriever:
                     WHERE j.actual_flown_miles <= $max_miles
                     RETURN j.feedback_ID, j.actual_flown_miles, j.number_of_legs,
                            j.food_satisfaction_score, p.generation, f.fleet_type_description
-                    ORDER BY j.actual_flown_miles LIMIT 20
+                    ORDER BY j.actual_flown_miles LIMIT 50
                 """
             # Journeys by class with satisfaction
             if 'class' in entities:
@@ -746,7 +755,7 @@ class Neo4jRetriever:
                            count(j) AS flight_count,
                            avg(j.arrival_delay_minutes) AS avg_delay,
                            avg(j.food_satisfaction_score) AS avg_food_score
-                    ORDER BY flight_count DESC LIMIT 10
+                    ORDER BY flight_count DESC LIMIT 50
                 """
             return None
 
@@ -839,7 +848,7 @@ class Neo4jRetriever:
             query_parts.append("WHERE " + " AND ".join(where_clauses))
         
         query_parts.append("RETURN " + ", ".join(return_fields))
-        query_parts.append("ORDER BY journey_count DESC LIMIT 20")
+        query_parts.append("ORDER BY journey_count DESC LIMIT 50")
         
         return "\n".join(query_parts)
 

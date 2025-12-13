@@ -31,7 +31,6 @@ SEMANTIC_THRESHOLDS = {
         "bad": {"max_food_satisfaction": 2},
         "low": {"max_food_satisfaction": 2},
         "mid": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
-        "average": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
         "okay": {"min_food_satisfaction": 3, "max_food_satisfaction": 3},
         "good": {"min_food_satisfaction": 4},
         "excellent": {"min_food_satisfaction": 5},
@@ -176,7 +175,7 @@ class QueryPreprocessor:
         
         FOOD SATISFACTION THRESHOLDS (scores 1-5):
         - "poor", "bad", "low", "terrible": max_food_satisfaction = 2
-        - "average", "okay", "mediocre": min_food_satisfaction = 3, max_food_satisfaction = 3
+        - "mid", "okay", "mediocre": min_food_satisfaction = 3, max_food_satisfaction = 3
         - "good", "high", "great": min_food_satisfaction = 4
         - "excellent", "outstanding": min_food_satisfaction = 5
         
@@ -402,8 +401,8 @@ class QueryPreprocessor:
             parameters["min_food_satisfaction"] = SEMANTIC_THRESHOLDS["food_satisfaction"]["excellent"]["min_food_satisfaction"]
         elif any(word in input_lower for word in ['good rating', 'good food']):
             parameters["min_food_satisfaction"] = SEMANTIC_THRESHOLDS["food_satisfaction"]["good"]["min_food_satisfaction"]
-        elif any(word in input_lower for word in ['average rating', 'average food', 'okay food']):
-            parameters.update(SEMANTIC_THRESHOLDS["food_satisfaction"]["average"])
+        elif any(word in input_lower for word in ['okay food', 'mid food']):
+            parameters.update(SEMANTIC_THRESHOLDS["food_satisfaction"]["mid"])
         
         # Distance inference
         if any(word in input_lower for word in ['short-haul', 'short haul', 'short flight', 'short distance']):
