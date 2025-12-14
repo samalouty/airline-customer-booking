@@ -11,6 +11,9 @@ import json
 from typing import Dict, Any
 import plotly.graph_objects as go
 import networkx as nx
+import time
+import threading
+import itertools
 
 # Force CPU usage for all models to avoid CUDA OOM errors
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
@@ -450,98 +453,139 @@ if prompt := st.chat_input("Ask a question about flights, delays, or passengers.
 
     # Generate response
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            handler = st.session_state.llm_handler
-            
-            # Logic to get result
-            # Map UI selection to backend mode
-            mode_map = {
-                "Baseline (Cypher Templates)": "baseline",
-                "Embedding (Vector Search)": "embedding", 
-                "Hybrid (Baseline + Embedding)": "hybrid",
-                "Query Automation (AI Generated)": "automation",
-                "Composite (All Strategies)": "all"
-            }
-            
-            result = handler.generate_answer(
-                prompt,
-                model=llm_model_key,
-                temperature=temperature,
-                retrieval_mode=mode_map.get(retrieval_method, "baseline")
-            )
-            
-            # Show Answer immediately
-            st.markdown(result['answer'])
-            
-            # Show Details immediately for the current turn
-            with st.expander("🔎 View Analysis & Evidence", expanded=False):
-                tab1, tab2, tab3, tab4, tab5 = st.tabs(["📚 Context", "📊 Data", "🗺️ Graph", "🔧 Queries", "🐛 Debug"])
+        # Loading animation
+        loading_placeholder = st.empty()
+        loading_phrases = [
+            "Thinking... 🤔",
+            "Reasoning... 🧠",
+            "Deep retrieving... 🔍",
+            "Analyzing usage patterns... 📊",
+            "Consulting the oracle... 🔮",
+            "Connecting data points... 🕸️",
+            "Optimizing vectors... 📐",
+            "Synthesizing response... 🧪"
+        ]
+        
+        result_container = {}
+        
+        # Capture handler from session state in the main thread
+        handler = st.session_state.llm_handler
+        
+        def run_generation():
+            try:
+                # Use the captured handler variable, NOT st.session_state
+                # Map UI selection to backend mode
+                mode_map = {
+                    "Baseline (Cypher Templates)": "baseline",
+                    "Embedding (Vector Search)": "embedding", 
+                    "Hybrid (Baseline + Embedding)": "hybrid",
+                    "Query Automation (AI Generated)": "automation",
+                    "Composite (All Strategies)": "all"
+                }
                 
-                with tab1:
-                    st.caption("Retrieved data used to generate the answer")
+                result_container["result"] = handler.generate_answer(
+                    prompt,
+                    model=llm_model_key,
+                    temperature=temperature,
+                    retrieval_mode=mode_map.get(retrieval_method, "baseline")
+                )
+            except Exception as e:
+                result_container["error"] = e
+
+        # Start background thread
+        t = threading.Thread(target=run_generation)
+        t.start()
+        
+        # Loop while thread is running
+        phrase_cycle = itertools.cycle(loading_phrases)
+        
+        while t.is_alive():
+            loading_placeholder.markdown(f"**{next(phrase_cycle)}**")
+            time.sleep(0.7)
+        
+        t.join()
+        
+        # Clear loading
+        loading_placeholder.empty()
+        
+        if "error" in result_container:
+            st.error(f"Generation Error: {result_container['error']}")
+            st.stop()
+            
+        result = result_container["result"]
+            
+        # Show Answer immediately
+        st.markdown(result['answer'])
+        
+        # Show Details immediately for the current turn
+        with st.expander("🔎 View Analysis & Evidence", expanded=False):
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📚 Context", "📊 Data", "🗺️ Graph", "🔧 Queries", "🐛 Debug"])
+            
+            with tab1:
+                st.caption("Retrieved data used to generate the answer")
+                
+                # 1. Baseline Results
+                if result.get('baseline_results', {}).get('results'):
+                    st.subheader("📋 Baseline Results (Template)")
+                    st.dataframe(format_results_table(result['baseline_results']['results']), use_container_width=True)
+                
+                # 2. Automated Query Results
+                if result.get('automated_results', {}).get('results'):
+                    st.subheader("🤖 Automated Query Results (AI)")
+                    st.dataframe(format_results_table(result['automated_results']['results']), use_container_width=True)
+                elif result.get('automated_results', {}).get('error'):
+                     st.error(f"Automation Error: {result['automated_results']['error']}")
                     
-                    # 1. Baseline Results
-                    if result.get('baseline_results', {}).get('results'):
-                        st.subheader("📋 Baseline Results (Template)")
-                        st.dataframe(format_results_table(result['baseline_results']['results']), use_container_width=True)
+                if not result.get('baseline_results', {}).get('results') and not result.get('automated_results', {}).get('results'):
+                    st.info("No direct database matches from structured queries.")
+
+                # 3. Embedding Results
+                if result.get('embedding_results', {}).get('results'):
+                    st.divider()
+                    st.subheader("🧠 Semantic Matches (Embeddings)")
+                    for item in result['embedding_results']['results'][:3]:
+                        with st.container():
+                            st.markdown(f"**Score: {item.get('score', 0):.2f}**")
+                            st.caption(item.get('semantic_text'))
+                            st.divider()
+
+            with tab2:
+                intent = result['baseline_results'].get('intent')
+                st.metric("Detected Intent", intent)
+                if result['baseline_results'].get('entities'):
+                    st.write("Extracted Entities:")
+                    st.json(result['baseline_results']['entities'])
+
+            with tab3:
+                fig = create_graph_visualization(result)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.write("No graph data to visualize.")
+
+            with tab4:
+                baseline_res = result['baseline_results']
+                executed_query = baseline_res.get('generated_cypher')
+                
+                if executed_query or (intent and intent != "unknown"):
+                    display_cypher_query(intent, baseline_res.get('entities', {}), executed_query)
+                else:
+                    st.info("No Template Cypher query generated.")
                     
-                    # 2. Automated Query Results
-                    if result.get('automated_results', {}).get('results'):
-                        st.subheader("🤖 Automated Query Results (AI)")
-                        st.dataframe(format_results_table(result['automated_results']['results']), use_container_width=True)
-                    elif result.get('automated_results', {}).get('error'):
-                         st.error(f"Automation Error: {result['automated_results']['error']}")
-                        
-                    if not result.get('baseline_results', {}).get('results') and not result.get('automated_results', {}).get('results'):
-                        st.info("No direct database matches from structured queries.")
-
-                    # 3. Embedding Results
-                    if result.get('embedding_results', {}).get('results'):
-                        st.divider()
-                        st.subheader("🧠 Semantic Matches (Embeddings)")
-                        for item in result['embedding_results']['results'][:3]:
-                            with st.container():
-                                st.markdown(f"**Score: {item.get('score', 0):.2f}**")
-                                st.caption(item.get('semantic_text'))
-                                st.divider()
-
-                with tab2:
-                    intent = result['baseline_results'].get('intent')
-                    st.metric("Detected Intent", intent)
-                    if result['baseline_results'].get('entities'):
-                        st.write("Extracted Entities:")
-                        st.json(result['baseline_results']['entities'])
-
-                with tab3:
-                    fig = create_graph_visualization(result)
-                    if fig:
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.write("No graph data to visualize.")
-
-                with tab4:
-                    baseline_res = result['baseline_results']
-                    executed_query = baseline_res.get('generated_cypher')
+                # Display Automated Query if present
+                if result.get("automated_results", {}).get("generated_cypher"):
+                    st.divider()
+                    st.markdown("**🤖 AI Generated Query (GPT-4o)**")
+                    st.code(result["automated_results"]["generated_cypher"], language="cypher")
                     
-                    if executed_query or (intent and intent != "unknown"):
-                        display_cypher_query(intent, baseline_res.get('entities', {}), executed_query)
-                    else:
-                        st.info("No Template Cypher query generated.")
-                        
-                    # Display Automated Query if present
-                    if result.get("automated_results", {}).get("generated_cypher"):
-                        st.divider()
-                        st.markdown("**🤖 AI Generated Query (GPT-4o)**")
-                        st.code(result["automated_results"]["generated_cypher"], language="cypher")
-                        
-                        err = result["automated_results"].get("error")
-                        if err:
-                            st.error(f"Query Error: {err}")
+                    err = result["automated_results"].get("error")
+                    if err:
+                        st.error(f"Query Error: {err}")
 
 
-                with tab5:
-                    if show_debug:
-                        st.json(result)
+            with tab5:
+                if show_debug:
+                    st.json(result)
 
     # Save to history
     st.session_state.chat_history.append({
