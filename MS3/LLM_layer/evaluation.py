@@ -84,7 +84,7 @@ class EvaluationMetrics:
 
         scores = {
             "relevance": self._score_relevance(answer, query),
-            "factual_grounding": self._score_grounding(answer, context),
+            # "factual_grounding": self._score_grounding(answer, context),
             "completeness": self._score_completeness(answer, query),
             "clarity": self._score_clarity(answer),
             "no_hallucination": self._detect_no_hallucination(answer, context),
